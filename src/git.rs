@@ -10,17 +10,13 @@ pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
     let repo = Repository::open(secrets_dir)
         .context("No se pudo abrir el repositorio git")?;
     
-    // Pull con rebase
-    info!("Ejecutando pull con rebase");
-    pull_rebase(&repo)?;
-    
-    // Verificar si hay cambios
+    // Verificar si hay cambios locales y hacer commit primero
     debug!("Verificando cambios locales");
     let statuses = repo.statuses(None)?;
     
     if !statuses.is_empty() {
         let msg = message.unwrap_or("Sync secrets");
-        info!("Detectados {} cambios, creando commit", statuses.len());
+        info!("Detectados {} cambios, creando commit antes de pull", statuses.len());
         debug!("Mensaje de commit: {}", msg);
         
         // Add
@@ -42,17 +38,19 @@ pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
             &tree,
             &[&parent],
         )?;
-        
-        // Push
-        info!("Realizando push al remoto");
-        push(&repo)?;
-        
-        println!("🚀 Sincronización completada.");
-        info!("Sincronización completada exitosamente");
-    } else {
-        info!("No hay cambios para sincronizar");
-        println!("✅ Todo al día.");
+        debug!("Commit creado exitosamente");
     }
+    
+    // Pull con rebase
+    info!("Ejecutando pull con rebase");
+    pull_rebase(&repo)?;
+    
+    // Push
+    info!("Realizando push al remoto");
+    push(&repo)?;
+    
+    println!("🚀 Sincronización completada.");
+    info!("Sincronización completada exitosamente");
     
     Ok(())
 }
@@ -60,10 +58,38 @@ pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
 fn pull_rebase(repo: &Repository) -> Result<()> {
     debug!("Iniciando pull con rebase");
     
-    // Fetch desde origin
+    // Fetch desde origin con callbacks SSH
     let mut remote = repo.find_remote("origin")?;
+    let mut callbacks = RemoteCallbacks::new();
+    
+    // Configurar autenticación SSH
+    callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        debug!("Solicitando credenciales SSH");
+        let username = username_from_url.unwrap_or("git");
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        
+        // Primero intentar con claves SSH del directorio .ssh
+        for key_name in ["id_ed25519", "id_rsa", "id_ecdsa"] {
+            let key_path_str = format!("{}/.ssh/{}", home, key_name);
+            let key_path = std::path::Path::new(&key_path_str);
+            if key_path.exists() {
+                debug!("Intentando con clave SSH: {}", key_path.display());
+                if let Ok(cred) = git2::Cred::ssh_key(username, None, key_path, None) {
+                    return Ok(cred);
+                }
+            }
+        }
+        
+        // Si no hay claves en disco, intentar con ssh-agent
+        debug!("Intentando con ssh-agent");
+        git2::Cred::ssh_key_from_agent(username)
+    });
+    
+    let mut fetch_options = git2::FetchOptions::new();
+    fetch_options.remote_callbacks(callbacks);
+    
     debug!("Fetching desde origin");
-    remote.fetch(&["main"], None, None)?;
+    remote.fetch(&["main"], Some(&mut fetch_options), None)?;
     
     // Obtener referencias
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
@@ -93,9 +119,31 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
 
 fn push(repo: &Repository) -> Result<()> {
     let mut remote = repo.find_remote("origin")?;
-    let callbacks = RemoteCallbacks::new();
+    let mut callbacks = RemoteCallbacks::new();
     
-    // Configurar callbacks vacíos (usa las credenciales del sistema)
+    // Configurar autenticación SSH
+    callbacks.credentials(|_url, username_from_url, _allowed_types| {
+        debug!("Solicitando credenciales SSH para push");
+        let username = username_from_url.unwrap_or("git");
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        
+        // Primero intentar con claves SSH del directorio .ssh
+        for key_name in ["id_ed25519", "id_rsa", "id_ecdsa"] {
+            let key_path_str = format!("{}/.ssh/{}", home, key_name);
+            let key_path = std::path::Path::new(&key_path_str);
+            if key_path.exists() {
+                debug!("Intentando push con clave SSH: {}", key_path.display());
+                if let Ok(cred) = git2::Cred::ssh_key(username, None, key_path, None) {
+                    return Ok(cred);
+                }
+            }
+        }
+        
+        // Si no hay claves en disco, intentar con ssh-agent
+        debug!("Intentando push con ssh-agent");
+        git2::Cred::ssh_key_from_agent(username)
+    });
+    
     let mut push_options = PushOptions::new();
     push_options.remote_callbacks(callbacks);
     
