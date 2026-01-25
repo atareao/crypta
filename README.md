@@ -3,7 +3,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/yourusername/crypta)
-[![Tests](https://img.shields.io/badge/tests-21%20passing-success.svg)](https://github.com/yourusername/crypta)
+[![Tests](https://img.shields.io/badge/tests-14%20passing-success.svg)](https://github.com/yourusername/crypta)
 [![Crates.io](https://img.shields.io/badge/crates.io-v0.1.0-blue.svg)](https://crates.io/crates/crypta)
 
 Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para encriptación de secretos y sincronización automática con Git.
@@ -12,11 +12,13 @@ Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para en
 
 - 🔒 **Encriptación robusta** usando SOPS/Age con AES-256-GCM
 - 📋 **Portapapeles integrado** multiplataforma (Linux, macOS, Windows)
+- � **Salida por stdout** para scripts con comando `show`
 - 🔄 **Sincronización Git** automática con rebase
-- 🦀 **100% Rust puro** - Sin dependencias de comandos externos
+- 🦀 **Rust + SOPS nativo** - Mejor compatibilidad
 - ⚡ **Rápido y eficiente** - Compilado nativamente
-- 🧪 **Completamente testeado** - 21 tests unitarios e integración
+- 🧪 **Completamente testeado** - 14 tests unitarios e integración
 - 📦 **Modular** - Biblioteca reutilizable + CLI
+- 🔍 **Debugging con tracing** - Logs configurables con RUST_LOG
 
 ## 📦 Instalación
 
@@ -69,6 +71,27 @@ crypta get API_KEY
 # 📋 Secreto 'API_KEY' copiado al portapapeles.
 ```
 
+### Mostrar un secreto (stdout)
+
+Útil para scripts y captura en variables:
+
+```bash
+# Mostrar directamente
+crypta show API_KEY
+
+# Sin logs (limpio para scripts)
+RUST_LOG=off crypta show API_KEY
+
+# Capturar en variable (fish)
+set TOKEN (RUST_LOG=off crypta show API_KEY)
+
+# Capturar en variable (bash)
+TOKEN=$(RUST_LOG=off crypta show API_KEY)
+
+# Usar en pipes
+crypta show API_KEY | wl-copy
+```
+
 ### Listar todas las claves
 
 ```bash
@@ -96,6 +119,43 @@ crypta sync
 crypta sync "Añadido nuevo secreto de producción"
 ```
 
+## 💡 Ejemplos Prácticos
+
+### Usar secretos en scripts
+
+```bash
+#!/bin/bash
+# Exportar secreto como variable de entorno
+export API_KEY=$(RUST_LOG=off crypta show API_KEY)
+
+# Usar en curl
+curl -H "Authorization: Bearer $(RUST_LOG=off crypta show API_TOKEN)" \
+     https://api.example.com/data
+```
+
+### Integración con Docker
+
+```bash
+# Pasar secreto a Docker
+docker run -e DB_PASS=$(RUST_LOG=off crypta show DB_PASSWORD) myapp
+
+# En docker-compose (usar .env file generado)
+RUST_LOG=off crypta show DATABASE_URL > .env
+```
+
+### Fish shell
+
+```fish
+# Función para cargar secretos
+function load_secret
+    set -gx $argv[1] (RUST_LOG=off crypta show $argv[2])
+end
+
+# Uso
+load_secret API_KEY my_api_key
+echo $API_KEY
+```
+
 ## 🏗️ Arquitectura
 
 ```
@@ -112,16 +172,33 @@ crypta/
 └── Cargo.toml
 ```
 
-## 🛠️ Tecnologías
+## � Comandos Disponibles
+
+| Comando | Descripción | Salida |
+|---------|-------------|--------|
+| `add KEY VALUE` | Añade o actualiza un secreto | ✅ Confirmación |
+| `get KEY` | Obtiene un secreto y lo copia al portapapeles | 📋 Al portapapeles |
+| `show KEY` | Muestra un secreto por stdout (ideal para scripts) | 📝 stdout |
+| `ls` | Lista todas las claves disponibles | 🔑 Lista |
+| `rm KEY` | Elimina un secreto | 🗑️ Confirmación |
+| `sync [MSG]` | Sincroniza cambios con Git | 🔄 Estado sync |
+
+**Diferencia entre `get` y `show`:**
+- `get`: Copia al portapapeles (uso interactivo)
+- `show`: Imprime por stdout (uso en scripts, pipes, variables)
+
+## �🛠️ Tecnologías
 
 | Dependencia | Propósito |
 |-------------|-----------|
-| **rops** | Biblioteca SOPS en Rust puro |
+| **SOPS** | Encriptación de secretos (comando nativo) |
+| **Age** | Criptografía moderna para SOPS |
 | **git2** | Operaciones Git nativas |
 | **arboard** | Portapapeles multiplataforma |
 | **clap** | CLI parsing con derive macros |
 | **serde_yaml** | Manipulación de YAML |
 | **anyhow** | Manejo de errores ergonómico |
+| **tracing** | Logging estructurado |
 
 ## 🧪 Tests
 
@@ -139,7 +216,7 @@ cargo test --lib
 cargo test --test '*'
 ```
 
-**Cobertura actual:** 21 tests (8 unitarios + 13 integración)
+**Cobertura actual:** 14 tests (6 secrets + 5 git + 3 integración)
 
 ## 📊 Benchmarks
 
@@ -189,8 +266,7 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 ## 🙏 Agradecimientos
 
-- [SOPS](https://github.com/getsops/sops) - Por la especificación original
-- [rops](https://github.com/gibbz00/rops) - Implementación de SOPS en Rust
+- [SOPS](https://github.com/getsops/sops) - Secrets OPerationS para encriptación
 - [Age](https://github.com/FiloSottile/age) - Sistema de encriptación simple y seguro
 
 ## 💬 Soporte

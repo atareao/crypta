@@ -1,99 +1,196 @@
-use std::path::Path;
-use serde_yaml::Value;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use arboard::Clipboard;
-use rops::file::builder::RopsFileBuilder;
-
-use crate::{EncryptedRopsFile, DecryptedRopsFile, YamlFileFormat};
+use serde_yaml::Value;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+use tracing::{debug, info};
 
 pub fn add(secrets_dir: &str, secrets_file: &str, key: &str, value: &str) -> Result<()> {
-    // Inicializar archivo si no existe
-    if !Path::new(secrets_file).exists() {
-        std::fs::create_dir_all(secrets_dir).context("No se pudo crear el directorio de secretos")?;
+    info!("Añadiendo secreto '{}'", key);
+    debug!("Directorio: {}, Archivo: {}", secrets_dir, secrets_file);
+    
+    verify_sops_installed()?;
+    
+    // Crear directorio si no existe
+    fs::create_dir_all(secrets_dir)
+        .context("No se pudo crear el directorio de secretos")?;
+
+    let decrypted_content = if !Path::new(secrets_file).exists() {
+        // Si no existe, crear estructura YAML vacía
+        info!("Creando nuevo archivo de secretos");
+        String::new()
+    } else {
+        // Desencriptar archivo existente
+        info!("Actualizando secreto existente '{}'", key);
+        debug!("Desencriptando con sops...");
         
-        // Crear archivo YAML vacío con el secreto inicial
-        let initial_yaml = format!("{}: {}", key, value);
+        let output = Command::new("sops")
+            .arg("-d")
+            .arg(secrets_file)
+            .output()
+            .context("No se pudo ejecutar sops")?;
         
-        // Encriptar usando rops - necesita una clave Age configurada
-        let builder = RopsFileBuilder::<YamlFileFormat>::new(&initial_yaml)?;
-        
-        // Obtener la clave Age desde las variables de entorno
-        if let Ok(age_key) = std::env::var("SOPS_AGE_KEY_FILE") {
-            eprintln!("ℹ️ Usando clave Age desde: {}", age_key);
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Error al desencriptar: {}", error);
         }
         
-        let encrypted: EncryptedRopsFile = builder.encrypt()?;
-        std::fs::write(secrets_file, encrypted.to_string())?;
-        
-        println!("✅ Secreto '{}' añadido/actualizado correctamente.", key);
-        return Ok(());
-    }
+        String::from_utf8(output.stdout)
+            .context("El contenido desencriptado no es UTF-8 válido")?
+    };
 
-    // Desencriptar, modificar y reencriptar
-    let encrypted_content = std::fs::read_to_string(secrets_file)?;
-    let encrypted: EncryptedRopsFile = encrypted_content.parse()?;
-    let decrypted: DecryptedRopsFile = encrypted.decrypt()?;
+    // Parsear YAML y actualizar
+    let mut data: Value = if decrypted_content.is_empty() {
+        Value::Mapping(serde_yaml::Mapping::new())
+    } else {
+        serde_yaml::from_str(&decrypted_content)
+            .context("No se pudo parsear el contenido YAML")?  
+    };
     
-    // Obtener el mapa actual y parsearlo como YAML
-    let current_yaml = decrypted.map().to_string();
-    let mut yaml: Value = serde_yaml::from_str(&current_yaml)?;
-    
-    if let Value::Mapping(ref mut map) = yaml {
-        map.insert(
-            Value::String(key.to_string()),
-            Value::String(value.to_string())
-        );
+    if let Value::Mapping(ref mut map) = data {
+        map.insert(Value::String(key.to_string()), Value::String(value.to_string()));
     }
     
-    let updated_yaml = serde_yaml::to_string(&yaml)?;
-    let builder = RopsFileBuilder::<YamlFileFormat>::new(&updated_yaml)?;
-    let encrypted: EncryptedRopsFile = builder.encrypt()?;
-    std::fs::write(secrets_file, encrypted.to_string())?;
+    let updated_yaml = serde_yaml::to_string(&data)
+        .context("No se pudo serializar el YAML")?;
+    debug!("YAML actualizado");
     
-    println!("✅ Secreto '{}' añadido/actualizado correctamente.", key);
+    // Encriptar con sops
+    let encrypted_content = encrypt_with_sops(&updated_yaml, secrets_file)?;
+    
+    fs::write(secrets_file, encrypted_content)
+        .context("No se pudo escribir el archivo de secretos")?;
+    debug!("Archivo encriptado y guardado");
+
+    println!("✅ Secreto '{}' añadido.", key);
     Ok(())
 }
 
 pub fn get(secrets_file: &str, key: &str) -> Result<()> {
-    let encrypted_content = std::fs::read_to_string(secrets_file)
-        .context("No se pudo leer el archivo de secretos")?;
-    let encrypted: EncryptedRopsFile = encrypted_content.parse()?;
-    let decrypted: DecryptedRopsFile = encrypted.decrypt()
-        .context("No se pudo desencriptar el archivo de secretos")?;
+    info!("Obteniendo secreto '{}'", key);
+    debug!("Archivo: {}", secrets_file);
     
-    let yaml_str = decrypted.map().to_string();
-    let yaml: Value = serde_yaml::from_str(&yaml_str)?;
+    if !Path::new(secrets_file).exists() {
+        anyhow::bail!(
+            "El archivo de secretos no existe: {}\n\nPrimero añade un secreto con: crypta add CLAVE valor",
+            secrets_file
+        );
+    }
+    
+    verify_sops_installed()?;
+    
+    debug!("Desencriptando con sops...");
+    let output = Command::new("sops")
+        .arg("-d")
+        .arg(secrets_file)
+        .output()
+        .context("No se pudo ejecutar sops")?;
+    
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Error al desencriptar: {}", error);
+    }
+    
+    let decrypted_content = String::from_utf8(output.stdout)
+        .context("El contenido desencriptado no es UTF-8 válido")?;
+    
+    let yaml: Value = serde_yaml::from_str(&decrypted_content)
+        .context("No se pudo parsear el contenido YAML")?;
     
     let val = yaml.get(key)
         .and_then(|v| v.as_str())
         .context(format!("La clave '{}' no existe", key))?;
     
     // Copiar al portapapeles
+    debug!("Copiando al portapapeles");
     let mut clipboard = Clipboard::new()
         .context("No se pudo acceder al portapapeles")?;
     clipboard.set_text(val)
         .context("No se pudo copiar al portapapeles")?;
+    info!("Secreto copiado al portapapeles exitosamente");
     
     println!("📋 Secreto '{}' copiado al portapapeles.", key);
     Ok(())
 }
 
-pub fn list(secrets_file: &str) -> Result<()> {
-    let encrypted_content = std::fs::read_to_string(secrets_file)
-        .context("No se pudo leer el archivo de secretos")?;
-    let encrypted: EncryptedRopsFile = encrypted_content.parse()?;
-    let decrypted: DecryptedRopsFile = encrypted.decrypt()
-        .context("No se pudo desencriptar el archivo de secretos")?;
+pub fn show(secrets_file: &str, key: &str) -> Result<()> {
+    info!("Mostrando secreto '{}'", key);
+    debug!("Archivo: {}", secrets_file);
     
-    let yaml_str = decrypted.map().to_string();
-    let yaml: Value = serde_yaml::from_str(&yaml_str)?;
+    if !Path::new(secrets_file).exists() {
+        anyhow::bail!(
+            "El archivo de secretos no existe: {}\n\nPrimero añade un secreto con: crypta add CLAVE valor",
+            secrets_file
+        );
+    }
+    
+    verify_sops_installed()?;
+    
+    debug!("Desencriptando con sops...");
+    let output = Command::new("sops")
+        .arg("-d")
+        .arg(secrets_file)
+        .output()
+        .context("No se pudo ejecutar sops")?;
+    
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Error al desencriptar: {}", error);
+    }
+    
+    let decrypted_content = String::from_utf8(output.stdout)
+        .context("El contenido desencriptado no es UTF-8 válido")?;
+    
+    let yaml: Value = serde_yaml::from_str(&decrypted_content)
+        .context("No se pudo parsear el contenido YAML")?;
+    
+    let val = yaml.get(key)
+        .and_then(|v| v.as_str())
+        .context(format!("La clave '{}' no existe", key))?;
+    
+    // Imprimir el valor por stdout
+    println!("{}", val);
+    Ok(())
+}
+
+pub fn list(secrets_file: &str) -> Result<()> {
+    info!("Listando secretos");
+    debug!("Archivo: {}", secrets_file);
+    
+    if !Path::new(secrets_file).exists() {
+        anyhow::bail!(
+            "El archivo de secretos no existe: {}\n\nPrimero añade un secreto con: crypta add CLAVE valor",
+            secrets_file
+        );
+    }
+    
+    verify_sops_installed()?;
+    
+    debug!("Desencriptando con sops...");
+    let output = Command::new("sops")
+        .arg("-d")
+        .arg(secrets_file)
+        .output()
+        .context("No se pudo ejecutar sops")?;
+    
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Error al desencriptar: {}", error);
+    }
+    
+    let decrypted_content = String::from_utf8(output.stdout)
+        .context("El contenido desencriptado no es UTF-8 válido")?;
+    
+    let yaml: Value = serde_yaml::from_str(&decrypted_content)
+        .context("No se pudo parsear el contenido YAML")?;
     
     println!("🔑 Claves en {}:", secrets_file);
     
     if let Value::Mapping(map) = yaml {
         for key in map.keys() {
             if let Some(key_str) = key.as_str() {
-                println!("- {}", key_str);
+                println!("  - {}", key_str);
             }
         }
     }
@@ -102,75 +199,114 @@ pub fn list(secrets_file: &str) -> Result<()> {
 }
 
 pub fn remove(secrets_file: &str, key: &str) -> Result<()> {
-    let encrypted_content = std::fs::read_to_string(secrets_file)
-        .context("No se pudo leer el archivo de secretos")?;
-    let encrypted: EncryptedRopsFile = encrypted_content.parse()?;
-    let decrypted: DecryptedRopsFile = encrypted.decrypt()
-        .context("No se pudo desencriptar el archivo de secretos")?;
+    info!("Eliminando secreto '{}'", key);
+    debug!("Archivo: {}", secrets_file);
     
-    let yaml_str = decrypted.map().to_string();
-    let mut yaml: Value = serde_yaml::from_str(&yaml_str)?;
-    
-    if let Value::Mapping(ref mut map) = yaml {
-        map.remove(Value::String(key.to_string()));
+    if !Path::new(secrets_file).exists() {
+        anyhow::bail!(
+            "El archivo de secretos no existe: {}",
+            secrets_file
+        );
     }
     
-    let updated_yaml = serde_yaml::to_string(&yaml)?;
-    let builder = RopsFileBuilder::<YamlFileFormat>::new(&updated_yaml)?;
-    let encrypted: EncryptedRopsFile = builder.encrypt()?;
-    std::fs::write(secrets_file, encrypted.to_string())?;
+    verify_sops_installed()?;
     
+    debug!("Desencriptando con sops...");
+    let output = Command::new("sops")
+        .arg("-d")
+        .arg(secrets_file)
+        .output()
+        .context("No se pudo ejecutar sops")?;
+    
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Error al desencriptar: {}", error);
+    }
+    
+    let decrypted_content = String::from_utf8(output.stdout)
+        .context("El contenido desencriptado no es UTF-8 válido")?;
+    
+    let mut yaml: Value = serde_yaml::from_str(&decrypted_content)
+        .context("No se pudo parsear el contenido YAML")?;
+    
+    if let Value::Mapping(ref mut map) = yaml {
+        map.remove(&Value::String(key.to_string()));
+    }
+    
+    let updated_yaml = serde_yaml::to_string(&yaml)
+        .context("No se pudo serializar el YAML")?;
+    debug!("YAML actualizado");
+    
+    // Encriptar con sops
+    let encrypted_content = encrypt_with_sops(&updated_yaml, secrets_file)?;
+    
+    fs::write(secrets_file, encrypted_content)
+        .context("No se pudo escribir el archivo de secretos")?;
+    debug!("Archivo reencriptado y guardado");
+
     println!("🗑️ Secreto '{}' eliminado.", key);
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_yaml_value_operations() {
-        let yaml_str = "test_key: test_value";
-        let yaml: Value = serde_yaml::from_str(yaml_str).unwrap();
-        
-        assert!(yaml.get("test_key").is_some());
-        assert_eq!(yaml.get("test_key").unwrap().as_str().unwrap(), "test_value");
-    }
-
-    #[test]
-    fn test_yaml_mapping_insert() {
-        let mut yaml = Value::Mapping(serde_yaml::Mapping::new());
-        
-        if let Value::Mapping(ref mut map) = yaml {
-            map.insert(
-                Value::String("key1".to_string()),
-                Value::String("value1".to_string())
-            );
-            assert_eq!(map.len(), 1);
+fn verify_sops_installed() -> Result<()> {
+    debug!("Verificando que sops esté instalado...");
+    
+    let output = Command::new("which")
+        .arg("sops")
+        .output();
+    
+    match output {
+        Ok(out) if out.status.success() => {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            debug!("sops encontrado en: {}", path);
+            Ok(())
+        }
+        _ => {
+            anyhow::bail!(
+                "El comando 'sops' no está instalado.\n\n\
+                Instala SOPS:\n\
+                - Arch Linux: sudo pacman -S sops\n\
+                - Ubuntu/Debian: sudo apt install sops\n\
+                - macOS: brew install sops\n\
+                - O descarga desde: https://github.com/getsops/sops/releases"
+            )
         }
     }
+}
 
-    #[test]
-    fn test_yaml_mapping_remove() {
-        let yaml_str = "key1: value1\nkey2: value2";
-        let mut yaml: Value = serde_yaml::from_str(yaml_str).unwrap();
-        
-        if let Value::Mapping(ref mut map) = yaml {
-            let removed = map.remove(Value::String("key1".to_string()));
-            assert!(removed.is_some());
-            assert_eq!(map.len(), 1);
-        }
+fn encrypt_with_sops(yaml_content: &str, secrets_file: &str) -> Result<Vec<u8>> {
+    debug!("Encriptando con sops...");
+    
+    // Obtener el directorio del archivo de secretos para .sops.yaml
+    let secrets_path = Path::new(secrets_file);
+    let work_dir = secrets_path.parent()
+        .context("No se pudo obtener el directorio del archivo de secretos")?;
+    
+    // Escribir contenido a un archivo temporal .yml en el mismo directorio
+    // para que SOPS pueda aplicar las reglas de creación basadas en path
+    use std::io::Write;
+    let temp_file_path = work_dir.join(".crypta_temp.yml");
+    let mut temp_file = fs::File::create(&temp_file_path)
+        .context("No se pudo crear archivo temporal")?;
+    temp_file.write_all(yaml_content.as_bytes())
+        .context("No se pudo escribir al archivo temporal")?;
+    drop(temp_file);  // Cerrar el archivo
+    
+    // Encriptar el archivo temporal
+    let output = Command::new("sops")
+        .arg("-e")
+        .arg(&temp_file_path)
+        .current_dir(work_dir)
+        .output()
+        .context("No se pudo ejecutar sops")?;
+    
+    // Limpiar archivo temporal
+    let _ = fs::remove_file(&temp_file_path);
+    
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Error al encriptar: {}", error);
     }
-
-    #[test]
-    fn test_directory_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let secrets_dir = temp_dir.path().join("test_secrets");
-        
-        fs::create_dir_all(&secrets_dir).unwrap();
-        assert!(secrets_dir.exists());
-        assert!(secrets_dir.is_dir());
-    }
+    
+    Ok(output.stdout)
 }

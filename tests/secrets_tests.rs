@@ -74,3 +74,28 @@ fn test_yaml_removal() {
         assert!(!map.contains_key(&Value::String("key1".to_string())));
     }
 }
+
+#[test]
+fn test_yaml_value_extraction() {
+    use serde_yaml::Value;
+    
+    let yaml_str = "api_key: secret123\nuser: admin";
+    let yaml: Value = serde_yaml::from_str(yaml_str).unwrap();
+    
+    // Extraer un valor específico
+    let api_key = yaml.get("api_key")
+        .and_then(|v| v.as_str());
+    
+    assert_eq!(api_key, Some("secret123"));
+    
+    let user = yaml.get("user")
+        .and_then(|v| v.as_str());
+    
+    assert_eq!(user, Some("admin"));
+    
+    // Intentar extraer una clave que no existe
+    let nonexistent = yaml.get("nonexistent")
+        .and_then(|v| v.as_str());
+    
+    assert_eq!(nonexistent, None);
+}

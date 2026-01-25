@@ -1,20 +1,27 @@
 use anyhow::{Result, Context};
 use git2::{Repository, Signature, IndexAddOption, PushOptions, RemoteCallbacks};
+use tracing::{debug, info};
 
 pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
+    info!("Iniciando sincronización Git");
+    debug!("Directorio: {}", secrets_dir);
     println!("🔄 Sincronizando con el remoto...");
     
     let repo = Repository::open(secrets_dir)
         .context("No se pudo abrir el repositorio git")?;
     
     // Pull con rebase
+    info!("Ejecutando pull con rebase");
     pull_rebase(&repo)?;
     
     // Verificar si hay cambios
+    debug!("Verificando cambios locales");
     let statuses = repo.statuses(None)?;
     
     if !statuses.is_empty() {
         let msg = message.unwrap_or("Sync secrets");
+        info!("Detectados {} cambios, creando commit", statuses.len());
+        debug!("Mensaje de commit: {}", msg);
         
         // Add
         let mut index = repo.index()?;
@@ -37,10 +44,13 @@ pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
         )?;
         
         // Push
+        info!("Realizando push al remoto");
         push(&repo)?;
         
         println!("🚀 Sincronización completada.");
+        info!("Sincronización completada exitosamente");
     } else {
+        info!("No hay cambios para sincronizar");
         println!("✅ Todo al día.");
     }
     
@@ -48,8 +58,11 @@ pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
 }
 
 fn pull_rebase(repo: &Repository) -> Result<()> {
+    debug!("Iniciando pull con rebase");
+    
     // Fetch desde origin
     let mut remote = repo.find_remote("origin")?;
+    debug!("Fetching desde origin");
     remote.fetch(&["main"], None, None)?;
     
     // Obtener referencias
@@ -57,6 +70,7 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
     let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
     
     // Rebase
+    debug!("Ejecutando rebase");
     let mut rebase = repo.rebase(
         None,
         Some(&fetch_commit),
@@ -64,11 +78,15 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
         None,
     )?;
     
+    let mut ops = 0;
     while let Some(_op) = rebase.next() {
+        ops += 1;
         rebase.commit(None, &Signature::now("crypta", "crypta@local")?, None)?;
     }
     
+    debug!("Aplicadas {} operaciones de rebase", ops);
     rebase.finish(None)?;
+    info!("Rebase completado exitosamente");
     
     Ok(())
 }

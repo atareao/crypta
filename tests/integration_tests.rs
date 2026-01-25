@@ -12,6 +12,7 @@ fn test_cli_help() {
     assert!(stdout.contains("Gestor de secretos con SOPS y Git"));
     assert!(stdout.contains("add"));
     assert!(stdout.contains("get"));
+    assert!(stdout.contains("show"));
     assert!(stdout.contains("ls"));
     assert!(stdout.contains("rm"));
     assert!(stdout.contains("sync"));
@@ -19,7 +20,7 @@ fn test_cli_help() {
 
 #[test]
 fn test_cli_subcommands() {
-    let subcommands = ["add", "get", "ls", "rm", "sync"];
+    let subcommands = ["add", "get", "show", "ls", "rm", "sync"];
     
     for cmd in &subcommands {
         let output = Command::new(env!("CARGO_BIN_EXE_crypta"))
