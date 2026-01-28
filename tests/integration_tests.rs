@@ -10,17 +10,17 @@ fn test_cli_help() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Gestor de secretos con SOPS y Git"));
-    assert!(stdout.contains("add"));
+    assert!(stdout.contains("store"));
     assert!(stdout.contains("get"));
-    assert!(stdout.contains("show"));
-    assert!(stdout.contains("ls"));
-    assert!(stdout.contains("rm"));
+    assert!(stdout.contains("lookup"));
+    assert!(stdout.contains("list"));
+    assert!(stdout.contains("delete"));
     assert!(stdout.contains("sync"));
 }
 
 #[test]
 fn test_cli_subcommands() {
-    let subcommands = ["add", "get", "show", "ls", "rm", "sync"];
+    let subcommands = ["store", "get", "lookup", "list", "delete", "sync"];
     
     for cmd in &subcommands {
         let output = Command::new(env!("CARGO_BIN_EXE_crypta"))

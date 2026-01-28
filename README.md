@@ -57,11 +57,11 @@ echo 'export SOPS_AGE_KEY_FILE=~/.age/key.txt' >> ~/.bashrc
 
 ## 🚀 Uso
 
-### Añadir/Actualizar un secreto
+### Almacenar/Actualizar un secreto
 
 ```bash
-crypta add API_KEY "mi-secreto-super-seguro"
-crypta add DATABASE_URL "postgresql://user:pass@localhost/db"
+crypta store API_KEY "mi-secreto-super-seguro"
+crypta store DATABASE_URL "postgresql://user:pass@localhost/db"
 ```
 
 ### Obtener un secreto (copia al portapapeles)
@@ -77,25 +77,25 @@ crypta get API_KEY
 
 ```bash
 # Mostrar directamente
-crypta show API_KEY
+crypta lookup API_KEY
 
 # Sin logs (limpio para scripts)
-RUST_LOG=off crypta show API_KEY
+RUST_LOG=off crypta lookup API_KEY
 
 # Capturar en variable (fish)
-set TOKEN (RUST_LOG=off crypta show API_KEY)
+set TOKEN (RUST_LOG=off crypta lookup API_KEY)
 
 # Capturar en variable (bash)
-TOKEN=$(RUST_LOG=off crypta show API_KEY)
+TOKEN=$(RUST_LOG=off crypta lookup API_KEY)
 
 # Usar en pipes
-crypta show API_KEY | wl-copy
+crypta lookup API_KEY | wl-copy
 ```
 
 ### Listar todas las claves
 
 ```bash
-crypta ls
+crypta list
 # 🔑 Claves en /home/user/.secrets/secrets.yml:
 # - API_KEY
 # - DATABASE_URL
@@ -104,7 +104,7 @@ crypta ls
 ### Eliminar un secreto
 
 ```bash
-crypta rm API_KEY
+crypta delete API_KEY
 # 🗑️ Secreto 'API_KEY' eliminado.
 ```
 
@@ -126,10 +126,10 @@ crypta sync "Añadido nuevo secreto de producción"
 ```bash
 #!/bin/bash
 # Exportar secreto como variable de entorno
-export API_KEY=$(RUST_LOG=off crypta show API_KEY)
+export API_KEY=$(RUST_LOG=off crypta lookup API_KEY)
 
 # Usar en curl
-curl -H "Authorization: Bearer $(RUST_LOG=off crypta show API_TOKEN)" \
+curl -H "Authorization: Bearer $(RUST_LOG=off crypta lookup API_TOKEN)" \
      https://api.example.com/data
 ```
 
@@ -137,10 +137,10 @@ curl -H "Authorization: Bearer $(RUST_LOG=off crypta show API_TOKEN)" \
 
 ```bash
 # Pasar secreto a Docker
-docker run -e DB_PASS=$(RUST_LOG=off crypta show DB_PASSWORD) myapp
+docker run -e DB_PASS=$(RUST_LOG=off crypta lookup DB_PASSWORD) myapp
 
 # En docker-compose (usar .env file generado)
-RUST_LOG=off crypta show DATABASE_URL > .env
+RUST_LOG=off crypta lookup DATABASE_URL > .env
 ```
 
 ### Fish shell
@@ -148,7 +148,7 @@ RUST_LOG=off crypta show DATABASE_URL > .env
 ```fish
 # Función para cargar secretos
 function load_secret
-    set -gx $argv[1] (RUST_LOG=off crypta show $argv[2])
+    set -gx $argv[1] (RUST_LOG=off crypta lookup $argv[2])
 end
 
 # Uso
@@ -176,16 +176,16 @@ crypta/
 
 | Comando | Descripción | Salida |
 |---------|-------------|--------|
-| `add KEY VALUE` | Añade o actualiza un secreto | ✅ Confirmación |
+| `store KEY VALUE` | Almacena o actualiza un secreto | ✅ Confirmación |
 | `get KEY` | Obtiene un secreto y lo copia al portapapeles | 📋 Al portapapeles |
-| `show KEY` | Muestra un secreto por stdout (ideal para scripts) | 📝 stdout |
-| `ls` | Lista todas las claves disponibles | 🔑 Lista |
-| `rm KEY` | Elimina un secreto | 🗑️ Confirmación |
+| `lookup KEY` | Muestra un secreto por stdout (ideal para scripts) | 📝 stdout |
+| `list` | Lista todas las claves disponibles | 🔑 Lista |
+| `delete KEY` | Elimina un secreto | 🗑️ Confirmación |
 | `sync [MSG]` | Sincroniza cambios con Git | 🔄 Estado sync |
 
-**Diferencia entre `get` y `show`:**
+**Diferencia entre `get` y `lookup`:**
 - `get`: Copia al portapapeles (uso interactivo)
-- `show`: Imprime por stdout (uso en scripts, pipes, variables)
+- `lookup`: Imprime por stdout (uso en scripts, pipes, variables)
 
 ## �🛠️ Tecnologías
 

@@ -14,16 +14,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Añade o actualiza un secreto
-    Add { key: String, value: String },
+    /// Almacena o actualiza un secreto
+    Store { key: String, value: String },
     /// Obtiene un valor y lo copia al portapapeles
     Get { key: String },
     /// Muestra un valor por stdout
-    Show { key: String },
+    Lookup { key: String },
     /// Lista todas las claves
-    Ls,
+    List,
     /// Elimina una clave
-    Rm { key: String },
+    Delete { key: String },
     /// Sincroniza cambios con el remoto
     Sync { message: Option<String> },
 }
@@ -33,7 +33,7 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("crypta=info"))
+                .unwrap_or_else(|_| EnvFilter::new("error"))
         )
         .with_target(false)
         .init();
@@ -56,11 +56,11 @@ fn main() {
 
 fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Result<()> {
     match command {
-        Commands::Add { key, value } => secrets::add(secrets_dir, secrets_file, key, value),
+        Commands::Store { key, value } => secrets::add(secrets_dir, secrets_file, key, value),
         Commands::Get { key } => secrets::get(secrets_file, key),
-        Commands::Show { key } => secrets::show(secrets_file, key),
-        Commands::Ls => secrets::list(secrets_file),
-        Commands::Rm { key } => secrets::remove(secrets_file, key),
+        Commands::Lookup { key } => secrets::show(secrets_file, key),
+        Commands::List => secrets::list(secrets_file),
+        Commands::Delete { key } => secrets::remove(secrets_file, key),
         Commands::Sync { message } => git::sync(secrets_dir, message.as_deref()),
     }
 }
