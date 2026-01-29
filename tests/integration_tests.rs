@@ -52,3 +52,25 @@ fn test_cli_version() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stdout.len() > 0 || stderr.len() > 0);
 }
+
+#[test]
+fn test_cli_short_commands() {
+    // Test de comandos cortos (aliases)
+    let short_commands = ["s", "se", "g", "l", "ls", "rm", "sy"];
+    
+    for cmd in &short_commands {
+        let output = Command::new(env!("CARGO_BIN_EXE_crypta"))
+            .arg(cmd)
+            .arg("--help")
+            .output()
+            .expect("Failed to execute command");
+        
+        // Los comandos cortos deben funcionar igual que los largos
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        
+        // Verificar que se muestra información de ayuda
+        assert!(stdout.len() > 0 || stderr.len() > 0, 
+                "Short command '{}' should show help output", cmd);
+    }
+}

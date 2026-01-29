@@ -15,18 +15,44 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Almacena o actualiza un secreto (valor desde stdin)
-    Store { key: String },
-    /// Almacena o actualiza un secreto (alias de store)
-    Set { key: String, value: String },
+    #[command(alias = "s")]
+    Store { 
+        /// Clave del secreto (o usa variable de entorno SECRET_ID)
+        key: Option<String> 
+    },
+    /// Almacena o actualiza un secreto
+    #[command(alias = "se")]
+    Set { 
+        /// Clave del secreto (o usa variable de entorno SECRET_ID)
+        #[arg(short, long)]
+        key: Option<String>, 
+        /// Valor del secreto
+        #[arg(short, long)]
+        value: String
+    },
     /// Obtiene un valor y lo copia al portapapeles
-    Get { key: String },
+    #[command(alias = "g")]
+    Get { 
+        /// Clave del secreto (o usa variable de entorno SECRET_ID)
+        key: Option<String> 
+    },
     /// Muestra un valor por stdout
-    Lookup { key: String },
+    #[command(alias = "l")]
+    Lookup { 
+        /// Clave del secreto (o usa variable de entorno SECRET_ID)
+        key: Option<String> 
+    },
     /// Lista todas las claves
+    #[command(alias = "ls")]
     List,
     /// Elimina una clave
-    Delete { key: String },
+    #[command(alias = "rm")]
+    Delete { 
+        /// Clave del secreto (o usa variable de entorno SECRET_ID)
+        key: Option<String> 
+    },
     /// Sincroniza cambios con el remoto
+    #[command(alias = "sy")]
     Sync { message: Option<String> },
 }
 
@@ -56,21 +82,47 @@ fn main() {
     info!("Comando ejecutado exitosamente");
 }
 
+/// Resuelve la clave del secreto desde parámetro o variable de entorno SECRET_ID
+fn resolve_key(key_param: Option<String>) -> Result<String> {
+    match key_param {
+        Some(key) => Ok(key),
+        None => {
+            std::env::var("SECRET_ID")
+                .map_err(|_| anyhow::anyhow!(
+                    "No se proporcionó clave. Usa el parámetro KEY o define la variable de entorno SECRET_ID"
+                ))
+        }
+    }
+}
+
 fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Result<()> {
     match command {
         Commands::Store { key } => {
+            let key = resolve_key(key.clone())?;
             // Leer valor desde stdin
             use std::io::{self, Read};
             let mut value = String::new();
             io::stdin().read_to_string(&mut value)?;
             let value = value.trim(); // Remover whitespace al final
-            secrets::add(secrets_dir, secrets_file, key, value)
+            secrets::add(secrets_dir, secrets_file, &key, value)
         },
-        Commands::Set { key, value } => secrets::add(secrets_dir, secrets_file, key, value),
-        Commands::Get { key } => secrets::get(secrets_file, key),
-        Commands::Lookup { key } => secrets::show(secrets_file, key),
+        Commands::Set { key, value } => {
+            let key = resolve_key(key.clone())?;
+            secrets::add(secrets_dir, secrets_file, &key, value)
+        },
+        Commands::Get { key } => {
+            let key = resolve_key(key.clone())?;
+            secrets::get(secrets_file, &key)
+        },
+        Commands::Lookup { key } => {
+            let key = resolve_key(key.clone())?;
+            secrets::show(secrets_file, &key)
+        },
         Commands::List => secrets::list(secrets_file),
-        Commands::Delete { key } => secrets::remove(secrets_file, key),
+        Commands::Delete { key } => {
+            let key = resolve_key(key.clone())?;
+            secrets::remove(secrets_file, &key)
+        },
         Commands::Sync { message } => git::sync(secrets_dir, message.as_deref()),
     }
 }

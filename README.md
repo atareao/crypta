@@ -64,9 +64,13 @@ echo 'export SOPS_AGE_KEY_FILE=~/.age/key.txt' >> ~/.bashrc
 ```bash
 # Secreto simple
 echo "mi-secreto-super-seguro" | crypta store API_KEY
+# O usando comando corto:
+echo "mi-secreto-super-seguro" | crypta s API_KEY
 
 # Desde variable
 printf "$SECRET_VALUE" | crypta store DATABASE_URL
+# O usando comando corto:
+printf "$SECRET_VALUE" | crypta s DATABASE_URL
 
 # Contenido multilínea (ej: claves SSH)
 cat ~/.ssh/id_rsa | crypta store SSH_PRIVATE_KEY
@@ -88,6 +92,10 @@ EOF
 # Sintaxis tradicional - ideal para scripts simples
 crypta set API_KEY "mi-secreto-super-seguro"
 crypta set DATABASE_URL "postgresql://user:pass@localhost/db"
+
+# O usando comandos cortos:
+crypta se API_KEY "mi-secreto-super-seguro"
+crypta se DATABASE_URL "postgresql://user:pass@localhost/db"
 ```
 
 ### Obtener un secreto (copia al portapapeles)
@@ -95,6 +103,9 @@ crypta set DATABASE_URL "postgresql://user:pass@localhost/db"
 ```bash
 crypta get API_KEY
 # 📋 Secreto 'API_KEY' copiado al portapapeles.
+
+# O usando comando corto:
+crypta g API_KEY
 ```
 
 ### Mostrar un secreto (stdout)
@@ -104,24 +115,36 @@ crypta get API_KEY
 ```bash
 # Mostrar directamente
 crypta lookup API_KEY
+# O usando comando corto:
+crypta l API_KEY
 
 # Sin logs (limpio para scripts)
 RUST_LOG=off crypta lookup API_KEY
+# O usando comando corto:
+RUST_LOG=off crypta l API_KEY
 
 # Capturar en variable (fish)
 set TOKEN (RUST_LOG=off crypta lookup API_KEY)
+# O usando comando corto:
+set TOKEN (RUST_LOG=off crypta l API_KEY)
 
 # Capturar en variable (bash)
 TOKEN=$(RUST_LOG=off crypta lookup API_KEY)
+# O usando comando corto:
+TOKEN=$(RUST_LOG=off crypta l API_KEY)
 
 # Usar en pipes
 crypta lookup API_KEY | wl-copy
+crypta l API_KEY | wl-copy  # comando corto
 ```
 
 ### Listar todas las claves
 
 ```bash
 crypta list
+# O usando comando corto:
+crypta ls
+
 # 🔑 Claves en /home/user/.secrets/secrets.yml:
 # - API_KEY
 # - DATABASE_URL
@@ -153,16 +176,46 @@ crypta sync "Añadido nuevo secreto de producción"
 #!/bin/bash
 # Almacenar desde archivo
 cat /path/to/secret.key | crypta store API_KEY
+# O usando variable de entorno
+SECRET_ID=API_KEY cat /path/to/secret.key | crypta store
 
 # Almacenar desde comando
 kubectl config view --raw | crypta store KUBECONFIG
 
+# Usar variable de entorno para workflows automatizados
+SECRET_ID=DATABASE_PASSWORD echo "super-secret-db-pass" | crypta store
+
 # Exportar secreto como variable de entorno
 export API_KEY=$(RUST_LOG=off crypta lookup API_KEY)
+# O usando SECRET_ID
+export API_KEY=$(SECRET_ID=API_KEY RUST_LOG=off crypta lookup)
 
 # Usar en curl
 curl -H "Authorization: Bearer $(RUST_LOG=off crypta lookup API_TOKEN)" \
      https://api.example.com/data
+```
+
+### Workflows con SECRET_ID
+
+```bash
+#!/bin/bash
+# Script que procesa múltiples secretos
+SECRETS=("API_KEY" "DB_PASS" "SSL_CERT")
+
+for secret in "${SECRETS[@]}"; do
+    echo "Procesando $secret..."
+    SECRET_ID="$secret" 
+    
+    # Verificar si existe
+    if SECRET_ID="$secret" crypta lookup >/dev/null 2>&1; then
+        echo "✅ $secret existe"
+    else
+        echo "⚠️ $secret no encontrado"
+        # Generar nuevo secreto
+        openssl rand -base64 32 | SECRET_ID="$secret" crypta store
+        echo "🆕 $secret creado"
+    fi
+done
 ```
 
 ### Integración con Docker
@@ -214,20 +267,31 @@ openssl req -x509 -newkey rsa:4096 -keyout - -out - -days 365 -nodes \
 ### DevOps y CI/CD
 
 ```bash
-# Almacenar tokens de GitHub/GitLab
-echo "$GITHUB_TOKEN" | crypta store GH_TOKEN
-echo "$GITLAB_TOKEN" | crypta store GL_TOKEN
+# Almacenar tokens usando variables de entorno (ideal para CI/CD)
+SECRET_ID=GITHUB_TOKEN echo "$GITHUB_TOKEN" | crypta store
+SECRET_ID=GITLAB_TOKEN echo "$GITLAB_TOKEN" | crypta store
 
 # Configuración AWS
 aws configure list --profile production | crypta store AWS_CONFIG
 
-# Almacenar secrets de Kubernetes
-kubectl get secret my-secret -o yaml | crypta store K8S_SECRET
+# Almacenar secrets de Kubernetes usando SECRET_ID
+kubectl get secret my-secret -o yaml | SECRET_ID=K8S_SECRET crypta store
+
+# Pipeline de CI/CD automatizado
+#!/bin/bash
+DEPLOY_SECRETS=("API_KEY" "DB_PASSWORD" "JWT_SECRET")
+
+for secret_name in "${DEPLOY_SECRETS[@]}"; do
+    if [ ! -z "${!secret_name}" ]; then
+        echo "Almacenando $secret_name desde variable de entorno..."
+        SECRET_ID="$secret_name" echo "${!secret_name}" | crypta store
+    fi
+done
 
 # Variables de entorno para deployment
-cat << EOF | crypta store PROD_ENV_VARS
+cat << EOF | SECRET_ID=PROD_ENV_VARS crypta store
 NODE_ENV=production
-DATABASE_URL=postgresql://prod-user:$(RUST_LOG=off crypta lookup DB_PASS)@prod-db:5432/myapp
+DATABASE_URL=postgresql://prod-user:$(SECRET_ID=DB_PASS RUST_LOG=off crypta lookup)@prod-db:5432/myapp
 REDIS_URL=redis://prod-redis:6379
 API_BASE_URL=https://api.example.com
 EOF
@@ -324,15 +388,60 @@ crypta/
 
 ## � Comandos Disponibles
 
-| Comando | Descripción | Entrada | Salida |
-|---------|-----------|---------|---------|
-| `store KEY` | Almacena o actualiza un secreto | 📝 stdin | ✅ Confirmación |
-| `set KEY VALUE` | Almacena o actualiza un secreto | 💬 Argumento | ✅ Confirmación |
-| `get KEY` | Obtiene un secreto y lo copia al portapapeles | - | 📋 Portapapeles |
-| `lookup KEY` | Muestra un secreto por stdout (ideal para scripts) | - | 📝 stdout |
-| `list` | Lista todas las claves disponibles | - | 🔑 Lista |
-| `delete KEY` | Elimina un secreto | - | 🗑️ Confirmación |
-| `sync [MSG]` | Sincroniza cambios con Git | - | 🔄 Estado sync |
+| Comando | Alias | Descripción | Key | Entrada | Salida |
+|---------|-------|-------------|-----|---------|--------|
+| `store [KEY]` | `s` | Almacena o actualiza un secreto | Parámetro o `$SECRET_ID` | 📝 stdin | ✅ Confirmación |
+| `set --key [KEY] --value VALUE` | `se` | Almacena o actualiza un secreto | `--key` o `$SECRET_ID` | 💬 Flag | ✅ Confirmación |
+| `get [KEY]` | `g` | Obtiene un secreto y lo copia al portapapeles | Parámetro o `$SECRET_ID` | - | 📋 Portapapeles |
+| `lookup [KEY]` | `l` | Muestra un secreto por stdout (ideal para scripts) | Parámetro o `$SECRET_ID` | - | 📝 stdout |
+| `list` | `ls` | Lista todas las claves disponibles | - | - | 🔑 Lista |
+| `delete [KEY]` | `rm` | Elimina un secreto | Parámetro o `$SECRET_ID` | - | 🗑️ Confirmación |
+| `sync [MSG]` | `sy` | Sincroniza cambios con Git | - | - | 🔄 Estado sync |
+
+### 🔑 Gestión de Claves
+
+Todos los comandos que requieren una clave pueden obtenerla de dos formas:
+
+1. **Parámetro directo**: `crypta get API_KEY`
+2. **Variable de entorno**: `SECRET_ID=API_KEY crypta get`
+
+```bash
+# Métodos equivalentes:
+crypta get API_KEY
+SECRET_ID=API_KEY crypta get
+
+# Store desde stdin
+echo "secreto" | crypta store API_KEY  
+SECRET_ID=API_KEY echo "secreto" | crypta store
+
+# Set con flags
+crypta set --key API_KEY --value "secreto"
+SECRET_ID=API_KEY crypta set --value "secreto"
+```
+
+### 🚀 Comandos Cortos (Aliases)
+
+Todos los comandos tienen versiones cortas para mayor rapidez:
+
+```bash
+# Comandos largos
+crypta store API_KEY < secret.txt
+crypta set API_KEY "value"  
+crypta get API_KEY
+crypta lookup API_KEY
+crypta list
+crypta delete API_KEY
+crypta sync "mensaje"
+
+# Comandos cortos (equivalentes)
+crypta s API_KEY < secret.txt
+crypta se API_KEY "value"
+crypta g API_KEY  
+crypta l API_KEY
+crypta ls
+crypta rm API_KEY
+crypta sy "mensaje"
+```
 
 **Diferencias entre comandos de almacenamiento:**
 - `store`: Lee valor desde stdin - ideal para contenido complejo, multilínea, o desde pipes
