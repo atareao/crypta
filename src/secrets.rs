@@ -190,7 +190,7 @@ pub fn list(secrets_file: &str) -> Result<()> {
     if let Value::Mapping(map) = yaml {
         for key in map.keys() {
             if let Some(key_str) = key.as_str() {
-                println!("  - {}", key_str);
+                println!("{}", key_str);
             }
         }
     }
