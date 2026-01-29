@@ -59,9 +59,35 @@ echo 'export SOPS_AGE_KEY_FILE=~/.age/key.txt' >> ~/.bashrc
 
 ### Almacenar/Actualizar un secreto
 
+#### Usando `store` (valor desde stdin)
+
 ```bash
-crypta store API_KEY "mi-secreto-super-seguro"
-crypta store DATABASE_URL "postgresql://user:pass@localhost/db"
+# Secreto simple
+echo "mi-secreto-super-seguro" | crypta store API_KEY
+
+# Desde variable
+printf "$SECRET_VALUE" | crypta store DATABASE_URL
+
+# Contenido multilínea (ej: claves SSH)
+cat ~/.ssh/id_rsa | crypta store SSH_PRIVATE_KEY
+
+# JSON o configuración compleja
+cat << EOF | crypta store DB_CONFIG
+{
+  "host": "localhost",
+  "port": 5432,
+  "user": "admin",
+  "password": "secret123"
+}
+EOF
+```
+
+#### Usando `set` (valor como argumento)
+
+```bash
+# Sintaxis tradicional - ideal para scripts simples
+crypta set API_KEY "mi-secreto-super-seguro"
+crypta set DATABASE_URL "postgresql://user:pass@localhost/db"
 ```
 
 ### Obtener un secreto (copia al portapapeles)
@@ -125,6 +151,12 @@ crypta sync "Añadido nuevo secreto de producción"
 
 ```bash
 #!/bin/bash
+# Almacenar desde archivo
+cat /path/to/secret.key | crypta store API_KEY
+
+# Almacenar desde comando
+kubectl config view --raw | crypta store KUBECONFIG
+
 # Exportar secreto como variable de entorno
 export API_KEY=$(RUST_LOG=off crypta lookup API_KEY)
 
@@ -141,6 +173,9 @@ docker run -e DB_PASS=$(RUST_LOG=off crypta lookup DB_PASSWORD) myapp
 
 # En docker-compose (usar .env file generado)
 RUST_LOG=off crypta lookup DATABASE_URL > .env
+
+# Almacenar configuración Docker
+docker-compose config | crypta store DOCKER_COMPOSE_CONFIG
 ```
 
 ### Fish shell
@@ -151,9 +186,124 @@ function load_secret
     set -gx $argv[1] (RUST_LOG=off crypta lookup $argv[2])
 end
 
+# Almacenar desde clipboard
+wl-paste | crypta store CLIPBOARD_SECRET
+
+# Generar y almacenar password
+openssl rand -base64 32 | crypta store RANDOM_PASSWORD
+
 # Uso
 load_secret API_KEY my_api_key
 echo $API_KEY
+```
+
+## 🔥 Ejemplos Avanzados
+
+### Gestión de Certificados SSL
+
+```bash
+# Almacenar certificados desde archivos
+cat /etc/ssl/certs/server.crt | crypta store SSL_CERT
+cat /etc/ssl/private/server.key | crypta store SSL_PRIVATE_KEY
+
+# Almacenar certificado desde comando
+openssl req -x509 -newkey rsa:4096 -keyout - -out - -days 365 -nodes \
+    -subj "/CN=example.com" | crypta store SELF_SIGNED_CERT
+```
+
+### DevOps y CI/CD
+
+```bash
+# Almacenar tokens de GitHub/GitLab
+echo "$GITHUB_TOKEN" | crypta store GH_TOKEN
+echo "$GITLAB_TOKEN" | crypta store GL_TOKEN
+
+# Configuración AWS
+aws configure list --profile production | crypta store AWS_CONFIG
+
+# Almacenar secrets de Kubernetes
+kubectl get secret my-secret -o yaml | crypta store K8S_SECRET
+
+# Variables de entorno para deployment
+cat << EOF | crypta store PROD_ENV_VARS
+NODE_ENV=production
+DATABASE_URL=postgresql://prod-user:$(RUST_LOG=off crypta lookup DB_PASS)@prod-db:5432/myapp
+REDIS_URL=redis://prod-redis:6379
+API_BASE_URL=https://api.example.com
+EOF
+```
+
+### Gestión de Bases de Datos
+
+```bash
+# Connection strings completas
+echo "postgresql://user:$(openssl rand -hex 16)@localhost:5432/mydb" | crypta store DATABASE_URL
+
+# Scripts SQL sensibles
+cat sensitive_migration.sql | crypta store SQL_MIGRATION_V2
+
+# Configuración MongoDB
+cat << EOF | crypta store MONGO_CONFIG
+{
+  "hosts": ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
+  "replicaSet": "rs0",
+  "username": "admin",
+  "password": "$(openssl rand -base64 24)"
+}
+EOF
+```
+
+### Integración con Password Managers
+
+```bash
+# Desde 1Password CLI
+op item get "API Key" --field password | crypta store OP_API_KEY
+
+# Desde Bitwarden CLI
+bw get password "Database Password" | crypta store BW_DB_PASS
+
+# Desde pass (Unix password manager)
+pass show services/api-key | crypta store PASS_API_KEY
+```
+
+### Automatización y Scripts
+
+```bash
+#!/bin/bash
+# Script para rotar contraseñas
+rotate_password() {
+    local key_name=$1
+    local new_pass=$(openssl rand -base64 32)
+    
+    # Almacenar nueva contraseña
+    echo "$new_pass" | crypta store "$key_name"
+    
+    # Sincronizar cambios
+    crypta sync "Rotated password for $key_name"
+    
+    echo "✅ Password rotated for $key_name"
+}
+
+# Uso
+rotate_password "API_KEY"
+rotate_password "DB_PASSWORD"
+```
+
+### Backup y Migración
+
+```bash
+# Exportar todos los secretos (para backup)
+for key in $(crypta list | grep -o '[A-Z_][A-Z0-9_]*'); do
+    echo "=== $key ===" >> backup.txt
+    RUST_LOG=off crypta lookup "$key" >> backup.txt
+    echo "" >> backup.txt
+done
+
+# Migrar desde otro gestor de secretos
+jq -r '.secrets[] | "\(.key)\n\(.value)"' old_secrets.json | \
+while read key && read value; do
+    echo "$value" | crypta store "$key"
+done
 ```
 
 ## 🏗️ Arquitectura
@@ -174,16 +324,21 @@ crypta/
 
 ## � Comandos Disponibles
 
-| Comando | Descripción | Salida |
-|---------|-------------|--------|
-| `store KEY VALUE` | Almacena o actualiza un secreto | ✅ Confirmación |
-| `get KEY` | Obtiene un secreto y lo copia al portapapeles | 📋 Al portapapeles |
-| `lookup KEY` | Muestra un secreto por stdout (ideal para scripts) | 📝 stdout |
-| `list` | Lista todas las claves disponibles | 🔑 Lista |
-| `delete KEY` | Elimina un secreto | 🗑️ Confirmación |
-| `sync [MSG]` | Sincroniza cambios con Git | 🔄 Estado sync |
+| Comando | Descripción | Entrada | Salida |
+|---------|-----------|---------|---------|
+| `store KEY` | Almacena o actualiza un secreto | 📝 stdin | ✅ Confirmación |
+| `set KEY VALUE` | Almacena o actualiza un secreto | 💬 Argumento | ✅ Confirmación |
+| `get KEY` | Obtiene un secreto y lo copia al portapapeles | - | 📋 Portapapeles |
+| `lookup KEY` | Muestra un secreto por stdout (ideal para scripts) | - | 📝 stdout |
+| `list` | Lista todas las claves disponibles | - | 🔑 Lista |
+| `delete KEY` | Elimina un secreto | - | 🗑️ Confirmación |
+| `sync [MSG]` | Sincroniza cambios con Git | - | 🔄 Estado sync |
 
-**Diferencia entre `get` y `lookup`:**
+**Diferencias entre comandos de almacenamiento:**
+- `store`: Lee valor desde stdin - ideal para contenido complejo, multilínea, o desde pipes
+- `set`: Toma valor como argumento - ideal para valores simples en scripts
+
+**Diferencias entre comandos de lectura:**
 - `get`: Copia al portapapeles (uso interactivo)
 - `lookup`: Imprime por stdout (uso en scripts, pipes, variables)
 
@@ -253,12 +408,22 @@ Las contribuciones son bienvenidas! Por favor:
 
 ## 📝 Roadmap
 
+### En desarrollo
+- [x] Comando `store` con entrada stdin para contenido complejo
+- [x] Comando `set` como alias tradicional para compatibilidad
+- [x] Soporte para contenido multilínea y binario
+
+### Próximas características
 - [ ] Soporte para múltiples backends de encriptación (AWS KMS, GCP KMS)
-- [ ] Exportación/importación de secretos
-- [ ] Interfaz TUI interactiva
-- [ ] Integración con gestores de contraseñas
-- [ ] Soporte para .env files
+- [ ] Comando `import` para migrar desde otros gestores (.env, JSON, YAML)
+- [ ] Comando `export` para backup en diferentes formatos
+- [ ] Interfaz TUI interactiva con navegación y búsqueda
 - [ ] Auto-completado para shells (bash/zsh/fish)
+- [ ] Plantillas de secretos para configuraciones comunes
+- [ ] Integración nativa con gestores de contraseñas (1Password, Bitwarden)
+- [ ] Soporte para etiquetas y categorización de secretos
+- [ ] Auditoría y logs de acceso a secretos
+- [ ] Rotación automática de contraseñas con webhooks
 
 ## 📄 Licencia
 
