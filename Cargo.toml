@@ -2,6 +2,13 @@
 name = "crypta"
 version = "0.1.6"
 edition = "2021"
+description = "Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para encriptación de secretos y sincronización automática con Git."
+license = "MIT"
+repository = "https://github.com/atareao/crypta"
+homepage = "https://github.com/atareao/crypta"
+keywords = ["secrets", "sops", "age", "encryption", "git"]
+categories = ["command-line-utilities", "cryptography"]
+readme = "README.md"
 
 [lib]
 name = "crypta"
