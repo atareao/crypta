@@ -1,7 +1,7 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
-use crypta::{secrets, git};
-use tracing::{info, error};
+use clap::{Parser, Subcommand};
+use crypta::{git, secrets};
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -16,41 +16,44 @@ struct Cli {
 enum Commands {
     /// Almacena o actualiza un secreto (valor desde stdin)
     #[command(alias = "s")]
-    Store { 
+    Store {
         /// Clave del secreto (o usa variable de entorno SECRET_ID)
-        key: Option<String> 
+        key: Option<String>,
     },
     /// Almacena o actualiza un secreto
     #[command(alias = "se")]
-    Set { 
+    Set {
         /// Clave del secreto (o usa variable de entorno SECRET_ID)
         #[arg(short, long)]
-        key: Option<String>, 
+        key: Option<String>,
         /// Valor del secreto
         #[arg(short, long)]
-        value: String
+        value: String,
     },
     /// Obtiene un valor y lo copia al portapapeles
     #[command(alias = "g")]
-    Get { 
+    Get {
         /// Clave del secreto (o usa variable de entorno SECRET_ID)
-        key: Option<String> 
+        key: Option<String>,
     },
     /// Muestra un valor por stdout
     #[command(alias = "l")]
-    Lookup { 
+    Lookup {
         /// Clave del secreto (o usa variable de entorno SECRET_ID)
-        key: Option<String> 
+        key: Option<String>,
     },
     /// Lista todas las claves
     #[command(alias = "ls")]
     List,
     /// Elimina una clave
     #[command(alias = "rm")]
-    Delete { 
+    Delete {
         /// Clave del secreto (o usa variable de entorno SECRET_ID)
-        key: Option<String> 
+        key: Option<String>,
     },
+    /// Inicializa el directorio y archivo de secretos
+    #[command(alias = "i")]
+    Init,
     /// Sincroniza cambios con el remoto
     #[command(alias = "sy")]
     Sync { message: Option<String> },
@@ -60,8 +63,7 @@ fn main() {
     // Configurar tracing - usa RUST_LOG=debug para ver más detalles
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("error"))
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("error")),
         )
         .with_target(false)
         .init();
@@ -105,24 +107,25 @@ fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Res
             io::stdin().read_to_string(&mut value)?;
             let value = value.trim(); // Remover whitespace al final
             secrets::add(secrets_dir, secrets_file, &key, value)
-        },
+        }
         Commands::Set { key, value } => {
             let key = resolve_key(key.clone())?;
             secrets::add(secrets_dir, secrets_file, &key, value)
-        },
+        }
         Commands::Get { key } => {
             let key = resolve_key(key.clone())?;
             secrets::get(secrets_file, &key)
-        },
+        }
         Commands::Lookup { key } => {
             let key = resolve_key(key.clone())?;
             secrets::show(secrets_file, &key)
-        },
+        }
         Commands::List => secrets::list(secrets_file),
         Commands::Delete { key } => {
             let key = resolve_key(key.clone())?;
             secrets::remove(secrets_file, &key)
-        },
+        }
+        Commands::Init => secrets::init(secrets_dir, secrets_file),
         Commands::Sync { message } => git::sync(secrets_dir, message.as_deref()),
     }
 }
