@@ -2,9 +2,9 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/yourusername/crypta)
-[![Tests](https://img.shields.io/badge/tests-14%20passing-success.svg)](https://github.com/yourusername/crypta)
-[![Crates.io](https://img.shields.io/badge/crates.io-v0.1.0-blue.svg)](https://crates.io/crates/crypta)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/atareao/crypta)
+[![Tests](https://img.shields.io/badge/tests-passing-success.svg)](https://github.com/atareao/crypta)
+[![Crates.io](https://img.shields.io/badge/crates.io-v0.1.7-blue.svg)](https://crates.io/crates/crypta)
 
 Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para encriptación de secretos y sincronización automática con Git.
 
@@ -12,11 +12,12 @@ Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para en
 
 - 🔒 **Encriptación robusta** usando SOPS/Age con AES-256-GCM
 - 📋 **Portapapeles integrado** multiplataforma (Linux, macOS, Windows)
-- � **Salida por stdout** para scripts con comando `show`
+- 📝 **Salida por stdout** para scripts con comando `lookup`
 - 🔄 **Sincronización Git** automática con rebase
+- ⚡ **Setup completamente automatizado** - `init` configura todo por ti
 - 🦀 **Rust + SOPS nativo** - Mejor compatibilidad
 - ⚡ **Rápido y eficiente** - Compilado nativamente
-- 🧪 **Completamente testeado** - 14 tests unitarios e integración
+- 🧪 **Completamente testeado** - Tests unitarios e integración
 - 📦 **Modular** - Biblioteca reutilizable + CLI
 - 🔍 **Debugging con tracing** - Logs configurables con RUST_LOG
 
@@ -25,7 +26,7 @@ Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para en
 ### Desde el código fuente
 
 ```bash
-git clone https://github.com/yourusername/crypta.git
+git clone https://github.com/atareao/crypta.git
 cd crypta
 cargo build --release
 sudo cp target/release/crypta /usr/local/bin/
@@ -39,23 +40,46 @@ cargo install crypta
 
 ## 🔑 Configuración
 
-Crypta requiere una clave Age para la encriptación. Configura tu entorno:
+### Configuración completamente automatizada ✨
+
+Crypta incluye un comando de inicialización que configura **todo automáticamente**:
 
 ```bash
-# Generar una clave Age (si no tienes una)
-age-keygen -o ~/.age/key.txt
-
-# Configurar la variable de entorno
-export SOPS_AGE_KEY_FILE=~/.age/key.txt
+# Un solo comando configura todo: directorio, clave Age y SOPS
+crypta init
+# O usando el alias corto:
+crypta i
 ```
 
-Añade la exportación a tu `~/.bashrc`, `~/.zshrc` o `~/.config/fish/config.fish`:
+Esto crea **automáticamente**:
+
+- `~/.secrets/` - Directorio para secretos
+- `~/.secrets/sops/age/key.txt` - Clave Age generada automáticamente
+- `~/.secrets/.sops.yaml` - Configuración SOPS con la clave correcta
+
+Solo necesitas configurar la variable de entorno una vez:
 
 ```bash
-echo 'export SOPS_AGE_KEY_FILE=~/.age/key.txt' >> ~/.bashrc
+# Añadir a tu ~/.bashrc, ~/.zshrc, o ~/.config/fish/config.fish
+export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
 ```
+
+¡Y listo! Ya puedes usar crypta inmediatamente.
 
 ## 🚀 Uso
+
+### Configuración inicial (solo una vez)
+
+```bash
+# 1. Inicializar crypta (totalmente automatizado)
+crypta init
+
+# 2. Configurar variable de entorno (sigue las instrucciones mostradas)
+export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
+
+# 3. ¡Listo! Crear tu primer secreto
+crypta set --key TEST --value "mi-primer-secreto"
+```
 
 ### Almacenar/Actualizar un secreto
 
@@ -170,6 +194,29 @@ crypta sync "Añadido nuevo secreto de producción"
 
 ## 💡 Ejemplos Prácticos
 
+### Configuración inicial (completamente automatizada)
+
+```bash
+# 🎩 Configuración mágica en 30 segundos
+crypta init
+
+# Crypta muestra algo como:
+# 🔑 Generando nueva clave Age: ~/.secrets/sops/age/key.txt
+# 📄 Archivo de configuración creado: ~/.secrets/.sops.yaml
+# ✅ Inicialización completada exitosamente
+# 💡 Para usar crypta, añade esto a tu shell:
+#    export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
+
+# Configurar variable de entorno (solo una vez)
+export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
+echo 'export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt' >> ~/.bashrc
+
+# 🎉 ¡Listo! Probar con tu primer secreto
+crypta set --key SALUDO --value "Hola desde crypta!"
+crypta lookup SALUDO
+# Hola desde crypta!
+```
+
 ### Usar secretos en scripts
 
 ```bash
@@ -204,8 +251,8 @@ SECRETS=("API_KEY" "DB_PASS" "SSL_CERT")
 
 for secret in "${SECRETS[@]}"; do
     echo "Procesando $secret..."
-    SECRET_ID="$secret" 
-    
+    SECRET_ID="$secret"
+
     # Verificar si existe
     if SECRET_ID="$secret" crypta lookup >/dev/null 2>&1; then
         echo "✅ $secret existe"
@@ -251,6 +298,89 @@ echo $API_KEY
 ```
 
 ## 🔥 Ejemplos Avanzados
+
+### Setup automatizado para equipos
+
+```bash
+#!/bin/bash
+# Script de configuración completamente automatizado para nuevos desarrolladores
+
+echo "🚀 Configurando crypta para el equipo..."
+
+# Inicializar crypta (genera clave Age y configura SOPS automáticamente)
+crypta init
+
+# Obtener la ruta de la clave generada
+AGE_KEY_FILE=$(find ~/.secrets -name "key.txt" -type f | head -1)
+
+if [ -n "$AGE_KEY_FILE" ]; then
+    echo "⚙️  Configurando variable de entorno..."
+
+    # Detectar shell y configurar apropiadamente
+    if [ -n "$BASH_VERSION" ]; then
+        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.bashrc
+        echo "✅ Configuración añadida a ~/.bashrc"
+    elif [ -n "$ZSH_VERSION" ]; then
+        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.zshrc
+        echo "✅ Configuración añadida a ~/.zshrc"
+    else
+        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.profile
+        echo "✅ Configuración añadida a ~/.profile"
+    fi
+
+    # Configurar para la sesión actual
+    export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
+
+    echo "🗝 Probando configuración..."
+    crypta set --key TEAM_WELCOME --value "Bienvenido al equipo!"
+
+    if crypta lookup TEAM_WELCOME >/dev/null 2>&1; then
+        echo "🎉 ¡Configuración exitosa!"
+        echo "💡 Para usar crypta en nuevas terminales, ejecuta: source ~/.bashrc"
+        crypta rm TEAM_WELCOME  # Limpiar secreto de prueba
+    else
+        echo "⚠️  Algo salió mal. Reinicia la terminal e intenta de nuevo."
+    fi
+fi
+
+# Configurar Git hooks para sincronización automática (si está en un repo)
+if [ -d .git ]; then
+    echo "⚙️  Configurando hooks Git..."
+    cat << 'EOF' > .git/hooks/post-commit
+#!/bin/bash
+if [ -f ~/.secrets/secrets.yml ]; then
+    crypta sync "Auto-sync after commit $(git rev-parse --short HEAD)"
+fi
+EOF
+    chmod +x .git/hooks/post-commit
+    echo "✅ Hook Git configurado"
+fi
+
+echo "🎉 ¡Setup completado! Crypta está listo para usar."
+# Migrar desde archivos .env a crypta
+
+# Inicializar crypta si no está configurado
+if [ ! -d ~/.secrets ]; then
+    crypta init
+    echo "⚠️  Configura tu clave Age antes de continuar"
+    exit 1
+fi
+
+# Migrar desde .env
+if [ -f .env ]; then
+    echo "📦 Migrando desde .env..."
+    while IFS='=' read -r key value; do
+        if [[ $key =~ ^[A-Z_][A-Z0-9_]*$ ]] && [ ! -z "$value" ]; then
+            echo "Migrando $key..."
+            echo "$value" | crypta store "$key"
+        fi
+    done < .env
+
+    # Backup del archivo original
+    mv .env .env.bak
+    echo "✅ Migración completada. Backup en .env.bak"
+fi
+```
 
 ### Gestión de Certificados SSL
 
@@ -338,13 +468,13 @@ pass show services/api-key | crypta store PASS_API_KEY
 rotate_password() {
     local key_name=$1
     local new_pass=$(openssl rand -base64 32)
-    
+
     # Almacenar nueva contraseña
     echo "$new_pass" | crypta store "$key_name"
-    
+
     # Sincronizar cambios
     crypta sync "Rotated password for $key_name"
-    
+
     echo "✅ Password rotated for $key_name"
 }
 
@@ -386,17 +516,18 @@ crypta/
 └── Cargo.toml
 ```
 
-## � Comandos Disponibles
+## 📋 Comandos Disponibles
 
-| Comando | Alias | Descripción | Key | Entrada | Salida |
-|---------|-------|-------------|-----|---------|--------|
-| `store [KEY]` | `s` | Almacena o actualiza un secreto | Parámetro o `$SECRET_ID` | 📝 stdin | ✅ Confirmación |
-| `set --key [KEY] --value VALUE` | `se` | Almacena o actualiza un secreto | `--key` o `$SECRET_ID` | 💬 Flag | ✅ Confirmación |
-| `get [KEY]` | `g` | Obtiene un secreto y lo copia al portapapeles | Parámetro o `$SECRET_ID` | - | 📋 Portapapeles |
-| `lookup [KEY]` | `l` | Muestra un secreto por stdout (ideal para scripts) | Parámetro o `$SECRET_ID` | - | 📝 stdout |
-| `list` | `ls` | Lista todas las claves disponibles | - | - | 🔑 Lista |
-| `delete [KEY]` | `rm` | Elimina un secreto | Parámetro o `$SECRET_ID` | - | 🗑️ Confirmación |
-| `sync [MSG]` | `sy` | Sincroniza cambios con Git | - | - | 🔄 Estado sync |
+| Comando                         | Alias | Descripción                                                               | Key                      | Entrada  | Salida            |
+| ------------------------------- | ----- | ------------------------------------------------------------------------- | ------------------------ | -------- | ----------------- |
+| `init`                          | `i`   | Inicializa **automáticamente** directorio, clave Age y configuración SOPS | -                        | -        | 🧠 Setup completo |
+| `store [KEY]`                   | `s`   | Almacena o actualiza un secreto                                           | Parámetro o `$SECRET_ID` | 📝 stdin | ✅ Confirmación   |
+| `set --key [KEY] --value VALUE` | `se`  | Almacena o actualiza un secreto                                           | `--key` o `$SECRET_ID`   | 💬 Flag  | ✅ Confirmación   |
+| `get [KEY]`                     | `g`   | Obtiene un secreto y lo copia al portapapeles                             | Parámetro o `$SECRET_ID` | -        | 📋 Portapapeles   |
+| `lookup [KEY]`                  | `l`   | Muestra un secreto por stdout (ideal para scripts)                        | Parámetro o `$SECRET_ID` | -        | 📝 stdout         |
+| `list`                          | `ls`  | Lista todas las claves disponibles                                        | -                        | -        | 🔑 Lista          |
+| `delete [KEY]`                  | `rm`  | Elimina un secreto                                                        | Parámetro o `$SECRET_ID` | -        | 🗑️ Confirmación   |
+| `sync [MSG]`                    | `sy`  | Sincroniza cambios con Git                                                | -                        | -        | 🔄 Estado sync    |
 
 ### 🔑 Gestión de Claves
 
@@ -411,7 +542,7 @@ crypta get API_KEY
 SECRET_ID=API_KEY crypta get
 
 # Store desde stdin
-echo "secreto" | crypta store API_KEY  
+echo "secreto" | crypta store API_KEY
 SECRET_ID=API_KEY echo "secreto" | crypta store
 
 # Set con flags
@@ -425,8 +556,9 @@ Todos los comandos tienen versiones cortas para mayor rapidez:
 
 ```bash
 # Comandos largos
+crypta init
 crypta store API_KEY < secret.txt
-crypta set API_KEY "value"  
+crypta set API_KEY "value"
 crypta get API_KEY
 crypta lookup API_KEY
 crypta list
@@ -434,9 +566,10 @@ crypta delete API_KEY
 crypta sync "mensaje"
 
 # Comandos cortos (equivalentes)
+crypta i
 crypta s API_KEY < secret.txt
 crypta se API_KEY "value"
-crypta g API_KEY  
+crypta g API_KEY
 crypta l API_KEY
 crypta ls
 crypta rm API_KEY
@@ -444,25 +577,27 @@ crypta sy "mensaje"
 ```
 
 **Diferencias entre comandos de almacenamiento:**
+
 - `store`: Lee valor desde stdin - ideal para contenido complejo, multilínea, o desde pipes
 - `set`: Toma valor como argumento - ideal para valores simples en scripts
 
 **Diferencias entre comandos de lectura:**
+
 - `get`: Copia al portapapeles (uso interactivo)
 - `lookup`: Imprime por stdout (uso en scripts, pipes, variables)
 
 ## �🛠️ Tecnologías
 
-| Dependencia | Propósito |
-|-------------|-----------|
-| **SOPS** | Encriptación de secretos (comando nativo) |
-| **Age** | Criptografía moderna para SOPS |
-| **git2** | Operaciones Git nativas |
-| **arboard** | Portapapeles multiplataforma |
-| **clap** | CLI parsing con derive macros |
-| **serde_yaml** | Manipulación de YAML |
-| **anyhow** | Manejo de errores ergonómico |
-| **tracing** | Logging estructurado |
+| Dependencia    | Propósito                                 |
+| -------------- | ----------------------------------------- |
+| **SOPS**       | Encriptación de secretos (comando nativo) |
+| **Age**        | Criptografía moderna para SOPS            |
+| **git2**       | Operaciones Git nativas                   |
+| **arboard**    | Portapapeles multiplataforma              |
+| **clap**       | CLI parsing con derive macros             |
+| **serde_yaml** | Manipulación de YAML                      |
+| **anyhow**     | Manejo de errores ergonómico              |
+| **tracing**    | Logging estructurado                      |
 
 ## 🧪 Tests
 
@@ -518,11 +653,14 @@ Las contribuciones son bienvenidas! Por favor:
 ## 📝 Roadmap
 
 ### En desarrollo
+
 - [x] Comando `store` con entrada stdin para contenido complejo
 - [x] Comando `set` como alias tradicional para compatibilidad
 - [x] Soporte para contenido multilínea y binario
+- [x] Comando `init` para inicialización automática
 
 ### Próximas características
+
 - [ ] Soporte para múltiples backends de encriptación (AWS KMS, GCP KMS)
 - [ ] Comando `import` para migrar desde otros gestores (.env, JSON, YAML)
 - [ ] Comando `export` para backup en diferentes formatos
@@ -547,9 +685,9 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 
 ¿Encontraste un bug? ¿Tienes una sugerencia?
 
-- 🐛 [Reportar un bug](https://github.com/yourusername/crypta/issues/new?labels=bug)
-- 💡 [Solicitar una feature](https://github.com/yourusername/crypta/issues/new?labels=enhancement)
-- 📖 [Documentación](https://github.com/yourusername/crypta/wiki)
+- 🐛 [Reportar un bug](https://github.com/atareao/crypta/issues/new?labels=bug)
+- 💡 [Solicitar una feature](https://github.com/atareao/crypta/issues/new?labels=enhancement)
+- 📖 [Documentación](https://github.com/atareao/crypta/wiki)
 
 ---
 

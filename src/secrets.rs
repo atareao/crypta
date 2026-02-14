@@ -308,6 +308,51 @@ fn encrypt_with_sops(yaml_content: &str, secrets_file: &str) -> Result<Vec<u8>> 
     Ok(output.stdout)
 }
 
+/// Extrae la clave pública de un archivo de clave privada Age
+fn extract_public_key_from_file(key_file_path: &str) -> Result<String> {
+    debug!("Extrayendo clave pública del archivo: {}", key_file_path);
+
+    // Leer el archivo de clave privada
+    let key_content =
+        fs::read_to_string(key_file_path).context("No se pudo leer el archivo de clave privada")?;
+
+    // Buscar el comentario que contiene la clave pública
+    for line in key_content.lines() {
+        if line.starts_with("# public key: ") {
+            let public_key = line.replace("# public key: ", "").trim().to_string();
+            debug!("Clave pública extraída: {}", public_key);
+            return Ok(public_key);
+        }
+    }
+
+    anyhow::bail!("No se pudo encontrar la clave pública en el archivo")
+}
+
+/// Extrae la clave pública de la salida de age-keygen
+fn extract_public_key_from_output(output: &str) -> Result<String> {
+    debug!("Extrayendo clave pública de la salida de age-keygen");
+
+    // Buscar la línea que contiene "Public key:"
+    for line in output.lines() {
+        if line.contains("Public key:") || line.starts_with("# public key: ") {
+            let public_key = if line.contains("Public key:") {
+                line.split("Public key:")
+                    .nth(1)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string()
+            } else {
+                line.replace("# public key: ", "").trim().to_string()
+            };
+
+            debug!("Clave pública extraída: {}", public_key);
+            return Ok(public_key);
+        }
+    }
+
+    anyhow::bail!("No se pudo extraer la clave pública de la salida de age-keygen")
+}
+
 pub fn init(secrets_dir: &str, secrets_file: &str) -> Result<()> {
     info!("Inicializando directorio de secretos");
     debug!("Directorio: {}, Archivo: {}", secrets_dir, secrets_file);
@@ -331,40 +376,84 @@ pub fn init(secrets_dir: &str, secrets_file: &str) -> Result<()> {
         return Ok(());
     }
 
-    // Crear archivo de configuración .sops.yaml si no existe
+    // Configurar el directorio para las claves Age
+    let age_key_dir = format!("{}/sops/age", secrets_dir);
+    let age_key_path = format!("{}/key.txt", age_key_dir);
+
+    // Crear directorio para claves Age si no existe
+    fs::create_dir_all(&age_key_dir).context("No se pudo crear el directorio para claves Age")?;
+
+    let public_key = if Path::new(&age_key_path).exists() {
+        info!("Clave Age ya existe, extrayendo clave pública");
+        println!("🔑 Clave Age encontrada: {}", age_key_path);
+
+        // Leer la clave privada existente y extraer la pública
+        extract_public_key_from_file(&age_key_path)?
+    } else {
+        info!("Generando nueva clave Age");
+        println!("🔑 Generando nueva clave Age: {}", age_key_path);
+
+        // Generar nueva clave Age
+        let output = Command::new("age-keygen")
+            .arg("-o")
+            .arg(&age_key_path)
+            .output()
+            .context("No se pudo ejecutar age-keygen. ¿Está instalado age?")?;
+
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Error al generar la clave Age: {}", error);
+        }
+
+        // La clave pública está en stderr de age-keygen
+        let stderr_output = String::from_utf8_lossy(&output.stderr);
+        extract_public_key_from_output(&stderr_output)?
+    };
+
+    // Crear archivo de configuración .sops.yaml
     let sops_config_path = format!("{}/.sops.yaml", secrets_dir);
     if !Path::new(&sops_config_path).exists() {
-        info!("Creando archivo de configuración SOPS");
-        let sops_config = r#"# Configuración de SOPS para crypta
-# IMPORTANTE: Reemplaza TU_CLAVE_PUBLICA_AGE por tu clave pública real
+        info!("Creando archivo de configuración SOPS con clave pública");
+        let sops_config = format!(
+            r#"# Configuración de SOPS para crypta
+# Generado automáticamente
 # 
-# Para generar tu par de claves:
-# 1. Ejecuta: age-keygen -o ~/.secrets/key.txt
-# 2. La clave pública aparecerá en la salida, reemplázala abajo
-# 3. Guarda la clave secreta de manera segura
+# Clave Age utilizada: {}
+# Variables de entorno recomendadas:
+#   export SOPS_AGE_KEY_FILE={}
 # 
 creation_rules:
   - path_regex: \.yml$
-    age: TU_CLAVE_PUBLICA_AGE
-"#;
+    age: {}
+"#,
+            age_key_path, age_key_path, public_key
+        );
 
         fs::write(&sops_config_path, sops_config)
             .context("No se pudo crear el archivo .sops.yaml")?;
 
         println!("📄 Archivo de configuración creado: {}", sops_config_path);
-        println!(
-            "⚠️  IMPORTANTE: Edita {} y reemplaza TU_CLAVE_PUBLICA_AGE",
-            sops_config_path
-        );
-        println!("💡 Para generar tu par de claves:");
-        println!("   1. Ejecuta: age-keygen -o ~/.secrets/key.txt");
-        println!("   2. Edita el archivo .sops.yaml con la clave pública mostrada");
-        println!("   3. Luego ejecuta 'crypta set --key test --value hello' para probar");
+    }
 
-        return Ok(());
+    // Configurar variable de entorno SOPS_AGE_KEY_FILE si no está definida
+    if std::env::var("SOPS_AGE_KEY_FILE").is_err() {
+        println!("⚠️  Variable de entorno no configurada");
+        println!("💡 Para usar crypta, añade esto a tu archivo de configuración del shell:");
+        println!("   export SOPS_AGE_KEY_FILE={}", age_key_path);
+        println!("   ");
+        println!(
+            "   Bash/Zsh: echo 'export SOPS_AGE_KEY_FILE={}' >> ~/.bashrc",
+            age_key_path
+        );
+        println!(
+            "   Fish: echo 'set -gx SOPS_AGE_KEY_FILE {}' >> ~/.config/fish/config.fish",
+            age_key_path
+        );
     }
 
     println!("✅ Inicialización completada exitosamente");
+    println!("🔐 Clave Age: {}", age_key_path);
+    println!("📄 Configuración SOPS: {}", sops_config_path);
     println!("💡 Ahora puedes añadir secretos con: crypta set --key CLAVE --value VALOR");
 
     Ok(())

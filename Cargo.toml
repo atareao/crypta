@@ -1,6 +1,6 @@
 [package]
 name = "crypta"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para encriptación de secretos y sincronización automática con Git."
 license = "MIT"
