@@ -84,7 +84,64 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
     fetch_options.remote_callbacks(callbacks);
 
     debug!("Fetching desde origin");
-    remote.fetch(&["main"], Some(&mut fetch_options), None)?;
+    let fetch_rebase_res: Result<(), git2::Error> = (|| {
+        remote.fetch(&["main"], Some(&mut fetch_options), None)?;
+
+        // Obtener referencias
+        let fetch_head = repo.find_reference("FETCH_HEAD")?;
+        let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
+
+        // Rebase
+        debug!("Ejecutando rebase");
+        let mut rebase = repo.rebase(
+            Some(&repo.head()?.peel_to_annotated_commit()?),
+            Some(&fetch_commit),
+            None,
+            None,
+        )?;
+
+        let mut ops = 0;
+        while let Some(_op) = rebase.next() {
+            ops += 1;
+            rebase.commit(None, &Signature::now("crypta", "crypta@local")?, None)?;
+        }
+
+        debug!("Aplicadas {} operaciones de rebase", ops);
+        rebase.finish(None)?;
+        Ok(())
+    })();
+
+    if let Err(e) = fetch_rebase_res {
+        debug!("Libgit2 fetch/rebase failed: {}", e);
+
+        // Fallback: try system `git pull --rebase` in the working directory.
+        let git_dir = repo.path();
+        let workdir = git_dir.parent().unwrap_or(git_dir);
+        let workdir_str = workdir.to_str().unwrap_or(".");
+        debug!(
+            "Attempting fallback using system git pull --rebase in {}",
+            workdir_str
+        );
+
+        use std::process::Command;
+        match Command::new("git")
+            .args(["-C", workdir_str, "pull", "--rebase", "origin", "main"])
+            .status()
+        {
+            Ok(s) if s.success() => {
+                debug!("Fallback git pull --rebase succeeded");
+                info!("Rebase completado exitosamente (fallback)");
+            }
+            Ok(s) => {
+                return Err(anyhow!("Fallback git pull failed with exit code: {}", s));
+            }
+            Err(err) => {
+                return Err(anyhow!("Failed to execute fallback git: {}", err));
+            }
+        }
+    } else {
+        info!("Rebase completado exitosamente");
+    }
 
     // Obtener referencias
     let fetch_head = repo.find_reference("FETCH_HEAD")?;
