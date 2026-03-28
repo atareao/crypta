@@ -53,6 +53,29 @@ pub fn sync(secrets_dir: &str, message: Option<&str>) -> Result<()> {
 fn pull_rebase(repo: &Repository) -> Result<()> {
     debug!("Iniciando pull con rebase");
 
+    // Opt-in: if CRYPTA_USE_SYSTEM_GIT is set to 1 or true, prefer system git
+    if std::env::var("CRYPTA_USE_SYSTEM_GIT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        debug!("CRYPTA_USE_SYSTEM_GIT enabled: using system git for pull --rebase");
+        let git_dir = repo.path();
+        let workdir = git_dir.parent().unwrap_or(git_dir);
+        let workdir_str = workdir.to_str().unwrap_or(".");
+        use std::process::Command;
+        let status = Command::new("git")
+            .args(["-C", workdir_str, "pull", "--rebase", "origin", "main"])
+            .status()
+            .context("Failed to execute system git for pull --rebase")?;
+
+        if status.success() {
+            info!("Rebase completado exitosamente (system git)");
+            return Ok(());
+        } else {
+            return Err(anyhow!("System git pull failed with exit code: {}", status));
+        }
+    }
+
     // Fetch desde origin con callbacks SSH
     let mut remote = repo.find_remote("origin")?;
     let mut callbacks = RemoteCallbacks::new();
@@ -93,12 +116,7 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
 
         // Rebase
         debug!("Ejecutando rebase");
-        let mut rebase = repo.rebase(
-            Some(&repo.head()?.peel_to_annotated_commit()?),
-            Some(&fetch_commit),
-            None,
-            None,
-        )?;
+        let mut rebase = repo.rebase(None, Some(&fetch_commit), None, None)?;
 
         let mut ops = 0;
         while let Some(_op) = rebase.next() {
@@ -165,6 +183,31 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
 }
 
 fn push(repo: &Repository) -> Result<()> {
+    // Opt-in: if CRYPTA_USE_SYSTEM_GIT is set to 1 or true, prefer system git for push
+    if std::env::var("CRYPTA_USE_SYSTEM_GIT")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        let git_dir = repo.path();
+        let workdir = git_dir.parent().unwrap_or(git_dir);
+        let workdir_str = workdir.to_str().unwrap_or(".");
+        debug!(
+            "CRYPTA_USE_SYSTEM_GIT enabled: using system git for push in {}",
+            workdir_str
+        );
+        use std::process::Command;
+        let status = Command::new("git")
+            .args(["-C", workdir_str, "push", "origin", "main"])
+            .status()
+            .context("Failed to execute system git for push")?;
+
+        if status.success() {
+            debug!("System git push succeeded");
+            return Ok(());
+        } else {
+            return Err(anyhow!("System git push failed with exit code: {}", status));
+        }
+    }
     let mut remote = repo.find_remote("origin")?;
     let mut callbacks = RemoteCallbacks::new();
 
