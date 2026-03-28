@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
+use rand::prelude::*;
 
 pub fn add(secrets_dir: &str, secrets_file: &str, key: &str, value: &str) -> Result<()> {
     info!("Añadiendo secreto '{}'", key);
@@ -466,9 +467,8 @@ pub fn password_string(length: usize, special: bool) -> Result<String> {
         anyhow::bail!("La longitud debe ser mayor que 0");
     }
 
-    use rand::Rng;
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
         .chars()
         .collect();
@@ -479,7 +479,7 @@ pub fn password_string(length: usize, special: bool) -> Result<String> {
 
     let mut password = String::with_capacity(length);
     for _ in 0..length {
-        let idx = rng.gen_range(0..chars.len());
+        let idx = rng.random_range(0..chars.len());
         password.push(chars[idx]);
     }
 
