@@ -299,6 +299,23 @@ echo $API_KEY
 
 ## 🔥 Ejemplos Avanzados
 
+### Generar contraseña
+
+Genera una contraseña aleatoria y la muestra por stdout. Opciones:
+
+```bash
+# Genera una contraseña de 32 caracteres (por defecto)
+crypta password
+
+# Especificar longitud
+crypta password --length 16
+crypta password -l 16
+
+# Incluir caracteres especiales
+crypta password --length 24 --special
+crypta password -l 24 --special
+```
+
 ### Setup automatizado para equipos
 
 ```bash

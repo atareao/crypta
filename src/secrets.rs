@@ -458,3 +458,37 @@ creation_rules:
 
     Ok(())
 }
+
+/// Genera y escribe una contraseña aleatoria por stdout
+/// Devuelve una contraseña aleatoria como `String`.
+pub fn password_string(length: usize, special: bool) -> Result<String> {
+    if length == 0 {
+        anyhow::bail!("La longitud debe ser mayor que 0");
+    }
+
+    use rand::Rng;
+
+    let mut rng = rand::thread_rng();
+    let mut chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        .chars()
+        .collect();
+
+    if special {
+        chars.extend("!@#$%^&*()-_=+[]{};:,.<>?/|\\".chars());
+    }
+
+    let mut password = String::with_capacity(length);
+    for _ in 0..length {
+        let idx = rng.gen_range(0..chars.len());
+        password.push(chars[idx]);
+    }
+
+    Ok(password)
+}
+
+/// Genera y escribe una contraseña aleatoria por stdout
+pub fn generate_password(length: usize, special: bool) -> Result<()> {
+    let password = password_string(length, special)?;
+    println!("{}", password);
+    Ok(())
+}

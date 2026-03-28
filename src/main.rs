@@ -57,6 +57,16 @@ enum Commands {
     /// Sincroniza cambios con el remoto
     #[command(alias = "sy")]
     Sync { message: Option<String> },
+    /// Genera una contraseña aleatoria
+    #[command(alias = "pwd")]
+    Password {
+        /// Longitud de la contraseña
+        #[arg(short = 'l', long, default_value_t = 32)]
+        length: usize,
+        /// Incluir caracteres especiales
+        #[arg(long, default_value_t = false)]
+        special: bool,
+    },
 }
 
 fn main() {
@@ -127,5 +137,6 @@ fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Res
         }
         Commands::Init => secrets::init(secrets_dir, secrets_file),
         Commands::Sync { message } => git::sync(secrets_dir, message.as_deref()),
+        Commands::Password { length, special } => secrets::generate_password(*length, *special),
     }
 }
