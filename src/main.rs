@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{Generator, Shell};
+use clap_complete::Shell;
 use crypta::{git, secrets};
 use std::io::{self, Read};
 use tracing::{error, info};
@@ -211,9 +211,8 @@ fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Res
                     shell
                 )
             })?;
-            let cmd = Cli::command();
-            shell.generate(&cmd, &mut io::stdout());
-            // clap_complete escribe directamente a stdout
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "crypta", &mut io::stdout());
             Ok(())
         }
     }
