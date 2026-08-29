@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux Binary
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Build release binary
+        run: cargo build --release --verbose
+      
+      - name: Rename binary
+        run: |
+          cd target/release
+          mv crypta crypta-linux-x86_64
+      
+      - name: Generate SHA256 checksum
+        run: |
+          cd target/release
+          sha256sum crypta-linux-x86_64 > crypta-linux-x86_64.sha256
+      
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/release/crypta-linux-x86_64
+            target/release/crypta-linux-x86_64.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
