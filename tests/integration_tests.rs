@@ -22,7 +22,18 @@ fn test_cli_help() {
 #[test]
 fn test_cli_subcommands() {
     let subcommands = [
-        "store", "set", "get", "lookup", "list", "delete", "sync", "init", "password",
+        "store",
+        "set",
+        "get",
+        "lookup",
+        "list",
+        "delete",
+        "sync",
+        "init",
+        "password",
+        "import",
+        "export",
+        "completion",
     ];
 
     for cmd in &subcommands {
@@ -58,7 +69,9 @@ fn test_cli_version() {
 #[test]
 fn test_cli_short_commands() {
     // Test de comandos cortos (aliases)
-    let short_commands = ["s", "se", "g", "l", "ls", "rm", "sy", "i", "pwd"];
+    let short_commands = [
+        "s", "se", "g", "l", "ls", "rm", "sy", "i", "pwd", "im", "ex", "com",
+    ];
 
     for cmd in &short_commands {
         let output = Command::new(env!("CARGO_BIN_EXE_crypta"))

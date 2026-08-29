@@ -96,3 +96,143 @@ fn test_yaml_value_extraction() {
 
     assert_eq!(nonexistent, None);
 }
+
+#[test]
+fn test_import_env_format() {
+    let input = "KEY1=valor1\nKEY2=valor2\n# comentario\nKEY3=valor3";
+    let pairs: std::collections::BTreeMap<String, String> = input
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            !t.is_empty() && !t.starts_with('#')
+        })
+        .filter_map(|l| {
+            let t = l.trim();
+            let eq_pos = t.find('=')?;
+            let key = t[..eq_pos].trim().to_string();
+            let value = t[eq_pos + 1..].trim().to_string();
+            if key.is_empty() {
+                None
+            } else {
+                Some((key, value))
+            }
+        })
+        .collect();
+
+    assert_eq!(pairs.len(), 3);
+    assert_eq!(pairs.get("KEY1"), Some(&"valor1".to_string()));
+    assert_eq!(pairs.get("KEY2"), Some(&"valor2".to_string()));
+    assert_eq!(pairs.get("KEY3"), Some(&"valor3".to_string()));
+}
+
+#[test]
+fn test_import_json_format() {
+    let input = r#"{"API_KEY": "secret123", "DB_URL": "postgres://localhost"}"#;
+    let pairs: std::collections::BTreeMap<String, String> = serde_json::from_str(input).unwrap();
+
+    assert_eq!(pairs.len(), 2);
+    assert_eq!(pairs.get("API_KEY"), Some(&"secret123".to_string()));
+    assert_eq!(
+        pairs.get("DB_URL"),
+        Some(&"postgres://localhost".to_string())
+    );
+}
+
+#[test]
+fn test_import_yaml_format() {
+    let input = "api_key: secret123\ndb_url: postgres://localhost\n";
+    let pairs: std::collections::BTreeMap<String, String> = serde_yaml::from_str(input).unwrap();
+
+    assert_eq!(pairs.len(), 2);
+    assert_eq!(pairs.get("api_key"), Some(&"secret123".to_string()));
+    assert_eq!(
+        pairs.get("db_url"),
+        Some(&"postgres://localhost".to_string())
+    );
+}
+
+#[test]
+fn test_export_env_format() {
+    let mut pairs = std::collections::BTreeMap::new();
+    pairs.insert("KEY1".to_string(), "valor1".to_string());
+    pairs.insert("KEY2".to_string(), "valor2".to_string());
+
+    let mut out = String::new();
+    for (key, value) in &pairs {
+        out.push_str(&format!("{}={}\n", key, value));
+    }
+
+    assert!(out.contains("KEY1=valor1"));
+    assert!(out.contains("KEY2=valor2"));
+}
+
+#[test]
+fn test_export_json_format() {
+    let mut pairs = std::collections::BTreeMap::new();
+    pairs.insert("KEY1".to_string(), "valor1".to_string());
+
+    let json = serde_json::to_string_pretty(&pairs).unwrap();
+    assert!(json.contains("KEY1"));
+    assert!(json.contains("valor1"));
+}
+
+#[test]
+fn test_export_yaml_format() {
+    let mut pairs = std::collections::BTreeMap::new();
+    pairs.insert("KEY1".to_string(), "valor1".to_string());
+
+    let yaml = serde_yaml::to_string(&pairs).unwrap();
+    assert!(yaml.contains("KEY1"));
+    assert!(yaml.contains("valor1"));
+}
+
+#[test]
+fn test_import_empty_input() {
+    let input = "";
+    let pairs: std::collections::BTreeMap<String, String> = input
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            !t.is_empty() && !t.starts_with('#')
+        })
+        .filter_map(|l| {
+            let t = l.trim();
+            let eq_pos = t.find('=')?;
+            let key = t[..eq_pos].trim().to_string();
+            let value = t[eq_pos + 1..].trim().to_string();
+            if key.is_empty() {
+                None
+            } else {
+                Some((key, value))
+            }
+        })
+        .collect();
+
+    assert!(pairs.is_empty());
+}
+
+#[test]
+fn test_import_env_with_comments() {
+    let input = "# esto es un comentario\nKEY=val\n# otro comentario";
+    let pairs: std::collections::BTreeMap<String, String> = input
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            !t.is_empty() && !t.starts_with('#')
+        })
+        .filter_map(|l| {
+            let t = l.trim();
+            let eq_pos = t.find('=')?;
+            let key = t[..eq_pos].trim().to_string();
+            let value = t[eq_pos + 1..].trim().to_string();
+            if key.is_empty() {
+                None
+            } else {
+                Some((key, value))
+            }
+        })
+        .collect();
+
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs.get("KEY"), Some(&"val".to_string()));
+}

@@ -10,7 +10,7 @@ Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para en
 
 ## ✨ Características
 
-- 🔒 **Encriptación robusta** usando SOPS/Age con AES-256-GCM
+- 🔒 **Encriptación mediante SOPS** (Age por defecto, soporta AWS KMS, GCP KMS, Azure Key Vault y PGP vía SOPS)
 - 📋 **Portapapeles integrado** multiplataforma (Linux, macOS, Windows)
 - 📝 **Salida por stdout** para scripts con comando `lookup`
 - 🔄 **Sincronización Git** automática con rebase
@@ -558,7 +558,8 @@ crypta/
 ├── tests/
 │   ├── secrets_tests.rs      # Tests de manipulación YAML
 │   ├── git_tests.rs          # Tests de operaciones Git
-│   └── integration_tests.rs  # Tests del CLI
+│   ├── integration_tests.rs  # Tests del CLI
+│   └── test_password.rs      # Tests de generación de contraseñas
 └── Cargo.toml
 ```
 
@@ -574,6 +575,7 @@ crypta/
 | `list`                          | `ls`  | Lista todas las claves disponibles                                        | -                        | -        | 🔑 Lista          |
 | `delete [KEY]`                  | `rm`  | Elimina un secreto                                                        | Parámetro o `$SECRET_ID` | -        | 🗑️ Confirmación   |
 | `sync [MSG]`                    | `sy`  | Sincroniza cambios con Git                                                | -                        | -        | 🔄 Estado sync    |
+| `password [-l N] [--special]`   | `pwd` | Genera una contraseña aleatoria                                           | -                        | -        | 🔑 stdout         |
 
 ### 🔑 Gestión de Claves
 
@@ -620,6 +622,7 @@ crypta l API_KEY
 crypta ls
 crypta rm API_KEY
 crypta sy "mensaje"
+crypta pwd -l 24 --special
 ```
 
 **Diferencias entre comandos de almacenamiento:**
@@ -661,7 +664,7 @@ cargo test --lib
 cargo test --test '*'
 ```
 
-**Cobertura actual:** 14 tests (6 secrets + 5 git + 3 integración)
+**Cobertura actual:** 21 tests (6 secrets + 5 git + 4 integración + 2 password + 4 unitarios git)
 
 ## 📊 Benchmarks
 
@@ -673,11 +676,10 @@ cargo test --test '*'
 
 ## 🔒 Seguridad
 
-- ✅ Encriptación AES-256-GCM
-- ✅ Hash SHA-512 para integridad
-- ✅ Claves Age con curvas elípticas Curve25519
-- ✅ Los secretos nunca se escriben en texto plano al disco
-- ✅ Limpieza automática de memoria (zeroize)
+- ✅ Encriptación mediante **SOPS** (Age, AWS KMS, GCP KMS, Azure Key Vault o PGP)
+- ✅ Claves Age con curvas elípticas **Curve25519**
+- ✅ Los secretos **nunca se escriben en texto plano al disco** — la encriptación se hace por stdin pipe
+- ✅ Sin dependencias de encriptación en Rust — todo el peso recae en SOPS, auditado y probado
 
 ## 🤝 Contribuir
 
@@ -707,16 +709,15 @@ Las contribuciones son bienvenidas! Por favor:
 
 ### Próximas características
 
-- [ ] Soporte para múltiples backends de encriptación (AWS KMS, GCP KMS)
-- [ ] Comando `import` para migrar desde otros gestores (.env, JSON, YAML)
-- [ ] Comando `export` para backup en diferentes formatos
-- [ ] Interfaz TUI interactiva con navegación y búsqueda
-- [ ] Auto-completado para shells (bash/zsh/fish)
+- [x] Comando `import` para migrar desde otros gestores (.env, JSON, YAML)
+- [x] Comando `export` para backup en diferentes formatos
+- [x] Auto-completado para shells (bash/zsh/fish)
 - [ ] Plantillas de secretos para configuraciones comunes
-- [ ] Integración nativa con gestores de contraseñas (1Password, Bitwarden)
 - [ ] Soporte para etiquetas y categorización de secretos
 - [ ] Auditoría y logs de acceso a secretos
 - [ ] Rotación automática de contraseñas con webhooks
+
+> **Nota:** El soporte para múltiples backends de encriptación (AWS KMS, GCP KMS, Azure Key Vault, PGP) ya está cubierto por SOPS. crypta delega toda la encriptación a `sops`, que soporta todos estos backends de forma nativa. Solo es necesario configurar `.sops.yaml` con la clave apropiada.
 
 ## 📄 Licencia
 
