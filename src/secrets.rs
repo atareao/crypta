@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use arboard::Clipboard;
 use rand::prelude::*;
 use serde_yaml::Value;
+use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
@@ -67,7 +69,7 @@ pub fn add(secrets_dir: &str, secrets_file: &str, key: &str, value: &str) -> Res
     Ok(())
 }
 
-pub fn get(secrets_file: &str, key: &str) -> Result<()> {
+pub fn get(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
     info!("Obteniendo secreto '{}'", key);
     debug!("Archivo: {}", secrets_file);
 
@@ -103,6 +105,10 @@ pub fn get(secrets_file: &str, key: &str) -> Result<()> {
         .and_then(|v| v.as_str())
         .context(format!("La clave '{}' no existe", key))?;
 
+    if log_access {
+        write_access_log(secrets_file, "get", key)?;
+    }
+
     // Copiar al portapapeles
     debug!("Copiando al portapapeles");
     let mut clipboard = Clipboard::new().context("No se pudo acceder al portapapeles")?;
@@ -115,7 +121,7 @@ pub fn get(secrets_file: &str, key: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn show(secrets_file: &str, key: &str) -> Result<()> {
+pub fn show(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
     info!("Mostrando secreto '{}'", key);
     debug!("Archivo: {}", secrets_file);
 
@@ -150,6 +156,10 @@ pub fn show(secrets_file: &str, key: &str) -> Result<()> {
         .get(key)
         .and_then(|v| v.as_str())
         .context(format!("La clave '{}' no existe", key))?;
+
+    if log_access {
+        write_access_log(secrets_file, "lookup", key)?;
+    }
 
     // Imprimir el valor por stdout
     println!("{}", val);
@@ -492,5 +502,167 @@ pub fn password_string(length: usize, special: bool) -> Result<String> {
 pub fn generate_password(length: usize, special: bool) -> Result<()> {
     let password = password_string(length, special)?;
     println!("{}", password);
+    Ok(())
+}
+
+/// Importa secretos desde un archivo o stdin en formato .env, JSON o YAML
+pub fn import_secrets(
+    secrets_dir: &str,
+    secrets_file: &str,
+    format: &str,
+    input: &str,
+    prefix: &str,
+    dry_run: bool,
+) -> Result<()> {
+    info!("Importando secretos en formato {}", format);
+
+    let pairs: BTreeMap<String, String> = match format {
+        "env" => {
+            let mut map = BTreeMap::new();
+            for line in input.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some(eq_pos) = line.find('=') {
+                    let key = line[..eq_pos].trim().to_string();
+                    let value = line[eq_pos + 1..].trim().to_string();
+                    if !key.is_empty() {
+                        map.insert(key, value);
+                    }
+                }
+            }
+            map
+        }
+        "json" => {
+            let parsed: BTreeMap<String, String> = serde_json::from_str(input).context(
+                "No se pudo parsear el JSON. Debe ser un objeto plano con valores string",
+            )?;
+            parsed
+        }
+        "yaml" => {
+            let parsed: BTreeMap<String, String> = serde_yaml::from_str(input).context(
+                "No se pudo parsear el YAML. Debe ser un mapping plano con valores string",
+            )?;
+            parsed
+        }
+        _ => anyhow::bail!("Formato no soportado: '{}'. Usa: env, json o yaml", format),
+    };
+
+    if pairs.is_empty() {
+        anyhow::bail!("No se encontraron secretos en la entrada");
+    }
+
+    println!("📦 Importando {} secreto(s)...", pairs.len());
+
+    if dry_run {
+        println!("🔍 Simulación (dry-run) — no se escribirá nada:");
+        for (key, value) in &pairs {
+            let full_key = if prefix.is_empty() {
+                key.clone()
+            } else {
+                format!("{}{}", prefix, key)
+            };
+            println!("   {} = {}", full_key, value);
+        }
+        return Ok(());
+    }
+
+    for (key, value) in &pairs {
+        let full_key = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{}{}", prefix, key)
+        };
+        add(secrets_dir, secrets_file, &full_key, value)?;
+    }
+
+    println!(
+        "✅ Importación completada: {} secreto(s) importado(s)",
+        pairs.len()
+    );
+    Ok(())
+}
+
+/// Exporta todos los secretos en el formato especificado
+pub fn export_secrets(secrets_file: &str, format: &str) -> Result<String> {
+    info!("Exportando secretos en formato {}", format);
+
+    if !Path::new(secrets_file).exists() {
+        anyhow::bail!("El archivo de secretos no existe: {}", secrets_file);
+    }
+
+    verify_sops_installed()?;
+
+    let output = Command::new("sops")
+        .arg("-d")
+        .arg(secrets_file)
+        .output()
+        .context("No se pudo ejecutar sops")?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Error al desencriptar: {}", error);
+    }
+
+    let decrypted_content = String::from_utf8(output.stdout)
+        .context("El contenido desencriptado no es UTF-8 válido")?;
+
+    let yaml: Value =
+        serde_yaml::from_str(&decrypted_content).context("No se pudo parsear el contenido YAML")?;
+
+    let mut pairs = BTreeMap::new();
+    if let Value::Mapping(map) = yaml {
+        for (k, v) in &map {
+            if let (Some(key_str), Some(val_str)) = (k.as_str(), v.as_str()) {
+                pairs.insert(key_str.to_string(), val_str.to_string());
+            }
+        }
+    }
+
+    let result = match format {
+        "env" => {
+            let mut out = String::new();
+            for (key, value) in &pairs {
+                out.push_str(&format!("{}={}\n", key, value));
+            }
+            out
+        }
+        "json" => serde_json::to_string_pretty(&pairs).context("No se pudo serializar a JSON")?,
+        "yaml" => serde_yaml::to_string(&pairs).context("No se pudo serializar a YAML")?,
+        _ => anyhow::bail!("Formato no soportado: '{}'. Usa: env, json o yaml", format),
+    };
+
+    Ok(result)
+}
+
+/// Escribe una entrada en el log de auditoría
+fn write_access_log(secrets_file: &str, action: &str, key: &str) -> Result<()> {
+    let secrets_path = Path::new(secrets_file);
+    let log_path = secrets_path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("access.log");
+
+    let user = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    let entry = format!("[{}] {} | {} | {}\n", timestamp, user, action, key);
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .context(format!(
+            "No se pudo abrir el log de auditoría: {}",
+            log_path.display()
+        ))?;
+
+    file.write_all(entry.as_bytes())
+        .context("No se pudo escribir al log de auditoría")?;
+
+    debug!("Entrada de auditoría escrita: {}", entry.trim());
     Ok(())
 }
