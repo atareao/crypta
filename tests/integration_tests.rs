@@ -6,7 +6,7 @@ fn test_cli_help() {
         .arg("--help")
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Gestor de secretos con SOPS y Git"));
@@ -21,19 +21,21 @@ fn test_cli_help() {
 
 #[test]
 fn test_cli_subcommands() {
-    let subcommands = ["store", "set", "get", "lookup", "list", "delete", "sync"];
-    
+    let subcommands = [
+        "store", "set", "get", "lookup", "list", "delete", "sync", "init", "password",
+    ];
+
     for cmd in &subcommands {
         let output = Command::new(env!("CARGO_BIN_EXE_crypta"))
             .arg(cmd)
             .arg("--help")
             .output()
             .expect("Failed to execute command");
-        
+
         // Algunos subcommandos pueden fallar sin argumentos, pero --help debe funcionar
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         // Verificar que se muestra información de ayuda
         assert!(stdout.len() > 0 || stderr.len() > 0);
     }
@@ -45,7 +47,7 @@ fn test_cli_version() {
         .arg("--version")
         .output()
         .expect("Failed to execute command");
-    
+
     // clap puede no implementar --version por defecto
     // Solo verificamos que el comando se ejecuta
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -56,21 +58,24 @@ fn test_cli_version() {
 #[test]
 fn test_cli_short_commands() {
     // Test de comandos cortos (aliases)
-    let short_commands = ["s", "se", "g", "l", "ls", "rm", "sy"];
-    
+    let short_commands = ["s", "se", "g", "l", "ls", "rm", "sy", "i", "pwd"];
+
     for cmd in &short_commands {
         let output = Command::new(env!("CARGO_BIN_EXE_crypta"))
             .arg(cmd)
             .arg("--help")
             .output()
             .expect("Failed to execute command");
-        
+
         // Los comandos cortos deben funcionar igual que los largos
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         // Verificar que se muestra información de ayuda
-        assert!(stdout.len() > 0 || stderr.len() > 0, 
-                "Short command '{}' should show help output", cmd);
+        assert!(
+            stdout.len() > 0 || stderr.len() > 0,
+            "Short command '{}' should show help output",
+            cmd
+        );
     }
 }

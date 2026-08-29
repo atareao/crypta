@@ -95,9 +95,9 @@ fn main() {
 }
 
 /// Resuelve la clave del secreto desde parámetro o variable de entorno SECRET_ID
-fn resolve_key(key_param: Option<String>) -> Result<String> {
+fn resolve_key(key_param: Option<&str>) -> Result<String> {
     match key_param {
-        Some(key) => Ok(key),
+        Some(key) => Ok(key.to_string()),
         None => {
             std::env::var("SECRET_ID")
                 .map_err(|_| anyhow::anyhow!(
@@ -110,7 +110,7 @@ fn resolve_key(key_param: Option<String>) -> Result<String> {
 fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Result<()> {
     match command {
         Commands::Store { key } => {
-            let key = resolve_key(key.clone())?;
+            let key = resolve_key(key.as_deref())?;
             // Leer valor desde stdin
             use std::io::{self, Read};
             let mut value = String::new();
@@ -119,20 +119,20 @@ fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Res
             secrets::add(secrets_dir, secrets_file, &key, value)
         }
         Commands::Set { key, value } => {
-            let key = resolve_key(key.clone())?;
+            let key = resolve_key(key.as_deref())?;
             secrets::add(secrets_dir, secrets_file, &key, value)
         }
         Commands::Get { key } => {
-            let key = resolve_key(key.clone())?;
+            let key = resolve_key(key.as_deref())?;
             secrets::get(secrets_file, &key)
         }
         Commands::Lookup { key } => {
-            let key = resolve_key(key.clone())?;
+            let key = resolve_key(key.as_deref())?;
             secrets::show(secrets_file, &key)
         }
         Commands::List => secrets::list(secrets_file),
         Commands::Delete { key } => {
-            let key = resolve_key(key.clone())?;
+            let key = resolve_key(key.as_deref())?;
             secrets::remove(secrets_file, &key)
         }
         Commands::Init => secrets::init(secrets_dir, secrets_file),

@@ -66,6 +66,35 @@ export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
 
 ¡Y listo! Ya puedes usar crypta inmediatamente.
 
+### 📁 Estructura de archivos
+
+Crypta guarda toda su configuración y datos en **`~/.secrets/`** (ruta fija, hardcodeada en el código):
+
+```
+~/.secrets/
+├── secrets.yml              ← Secretos cifrados con SOPS/Age
+├── .sops.yaml               ← Reglas de creación SOPS
+└── sops/
+    └── age/
+        └── key.txt          ← Clave privada Age (¡no compartir!)
+```
+
+| Archivo | Propósito |
+|---|---|
+| `~/.secrets/secrets.yml` | Archivo con todos los secretos, cifrado con SOPS usando Age. Nunca se guarda en texto plano. |
+| `~/.secrets/.sops.yaml` | Configuración de SOPS: define qué clave Age usar para cifrar. Se genera automáticamente en `crypta init`. |
+| `~/.secrets/sops/age/key.txt` | Clave privada Age (Curve25519). Necesaria para descifrar. **Protégela como cualquier contraseña maestra.** |
+
+#### Variables de entorno
+
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `SOPS_AGE_KEY_FILE` | ✅ Sí | Ruta a la clave privada Age. Debe apuntar a `~/.secrets/sops/age/key.txt` para que SOPS pueda descifrar. |
+| `SECRET_ID` | ❌ No | Permite omitir el parámetro KEY en los comandos. Útil para scripts y automatizaciones. |
+| `RUST_LOG` | ❌ No | Nivel de logging: `error` (por defecto), `info`, `debug`. Usa `RUST_LOG=off` para silenciar logs en scripts. |
+
+> **Nota:** La ruta `~/.secrets/` está fijada en el código fuente (`src/main.rs`). No es posible cambiarla mediante variable de entorno ni archivo de configuración.
+
 ## 🚀 Uso
 
 ### Configuración inicial (solo una vez)

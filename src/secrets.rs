@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use arboard::Clipboard;
+use rand::prelude::*;
 use serde_yaml::Value;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
-use rand::prelude::*;
 
 pub fn add(secrets_dir: &str, secrets_file: &str, key: &str, value: &str) -> Result<()> {
     info!("Añadiendo secreto '{}'", key);
@@ -229,7 +229,7 @@ pub fn remove(secrets_file: &str, key: &str) -> Result<()> {
         serde_yaml::from_str(&decrypted_content).context("No se pudo parsear el contenido YAML")?;
 
     if let Value::Mapping(ref mut map) = yaml {
-        map.remove(&Value::String(key.to_string()));
+        map.remove(Value::String(key.to_string()));
     }
 
     let updated_yaml = serde_yaml::to_string(&yaml).context("No se pudo serializar el YAML")?;
@@ -279,27 +279,30 @@ fn encrypt_with_sops(yaml_content: &str, secrets_file: &str) -> Result<Vec<u8>> 
         .parent()
         .context("No se pudo obtener el directorio del archivo de secretos")?;
 
-    // Escribir contenido a un archivo temporal .yml en el mismo directorio
-    // para que SOPS pueda aplicar las reglas de creación basadas en path
-    use std::io::Write;
-    let temp_file_path = work_dir.join(".crypta_temp.yml");
-    let mut temp_file =
-        fs::File::create(&temp_file_path).context("No se pudo crear archivo temporal")?;
-    temp_file
-        .write_all(yaml_content.as_bytes())
-        .context("No se pudo escribir al archivo temporal")?;
-    drop(temp_file); // Cerrar el archivo
-
-    // Encriptar el archivo temporal
-    let output = Command::new("sops")
-        .arg("-e")
-        .arg(&temp_file_path)
+    // Pasar el contenido por stdin a sops -e para evitar escribir secretos
+    // en texto plano al disco. sops lee de stdin cuando no se le pasa archivo.
+    // Usamos --input-type y --output-type para asegurar formato correcto.
+    let mut child = Command::new("sops")
+        .args(["-e", "--input-type", "yaml", "--output-type", "yaml"])
         .current_dir(work_dir)
-        .output()
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .context("No se pudo ejecutar sops")?;
 
-    // Limpiar archivo temporal
-    let _ = fs::remove_file(&temp_file_path);
+    // Escribir contenido al stdin de sops
+    use std::io::Write;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(yaml_content.as_bytes())
+            .context("No se pudo escribir al stdin de sops")?;
+    }
+    drop(child.stdin.take());
+
+    let output = child
+        .wait_with_output()
+        .context("No se pudo esperar por sops")?;
 
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr);
@@ -466,7 +469,6 @@ pub fn password_string(length: usize, special: bool) -> Result<String> {
     if length == 0 {
         anyhow::bail!("La longitud debe ser mayor que 0");
     }
-
 
     let mut rng = rand::rng();
     let mut chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"

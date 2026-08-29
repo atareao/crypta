@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**crypta** is a command-line Lorem Ipsum generator written in Rust. It generates random Lorem Ipsum text in various formats (words, sentences, paragraphs) with customizable lengths.
+**crypta** is a modern secrets manager written in Rust. It uses SOPS/Age for encryption and Git for automatic synchronization. It stores encrypted secrets in a YAML file at `~/.secrets/secrets.yml`.
 
 ## Project Structure
 
@@ -10,11 +10,14 @@
 crypta/
 ├── src/
 │   ├── main.rs          # CLI entry point with clap argument parsing
-│   └── lib.rs           # Core generation logic (public API)
+│   ├── lib.rs           # Module declarations
+│   ├── secrets.rs       # Secret operations (add, get, show, list, remove, init, password)
+│   └── git.rs           # Git operations (sync with pull --rebase + push)
 ├── tests/
-│   ├── test_crypta.rs           # Unit tests for core functions
-│   ├── test_paragraph_length.rs  # Unit tests for paragraph length customization
-│   └── integration_tests.rs      # Integration tests for the binary
+│   ├── secrets_tests.rs       # Tests for YAML manipulation
+│   ├── git_tests.rs           # Tests for Git operations
+│   ├── integration_tests.rs   # CLI integration tests
+│   └── test_password.rs       # Password generation tests
 ├── Cargo.toml
 └── README.md
 ```
@@ -23,28 +26,53 @@ crypta/
 
 ### Library (src/lib.rs)
 
-- **Public API** with generic RNG support
-- Core functions:
-  - `generate_words<R: Rng>(rng: &mut R, count: usize) -> String`
-  - `generate_sentences<R: Rng>(rng: &mut R, count: usize, min_words: usize, max_words: usize) -> String`
-  - `generate_paragraphs<R: Rng>(rng: &mut R, count: usize, min_words: usize, max_words: usize) -> String`
-  - `generate_content<R: Rng>(rng: &mut R, content_type: &str, count: usize, paragraph_length: Option<(usize, usize)>) -> Result<String, String>`
+- Declares two public modules: `secrets` and `git`
+- Used as a library (`crypta`) and as a binary
+
+### Secrets Module (src/secrets.rs)
+
+- **Public functions:**
+  - `add(secrets_dir, secrets_file, key, value)` - Add or update a secret (decrypts, modifies, re-encrypts with SOPS)
+  - `get(secrets_file, key)` - Get a secret and copy to clipboard via `arboard`
+  - `show(secrets_file, key)` - Print a secret to stdout
+  - `list(secrets_file)` - List all secret keys
+  - `remove(secrets_file, key)` - Delete a secret
+  - `init(secrets_dir, secrets_file)` - Initialize secrets directory, generate Age key, create SOPS config
+  - `password_string(length, special)` - Generate a random password string
+  - `generate_password(length, special)` - Generate and print a random password
+- **Private helpers:**
+  - `verify_sops_installed()` - Check that `sops` binary is available
+  - `encrypt_with_sops(yaml_content, secrets_file)` - Encrypt YAML content via `sops -e` stdin pipe
+  - `extract_public_key_from_file(key_file_path)` - Extract Age public key from key file
+  - `extract_public_key_from_output(output)` - Extract Age public key from age-keygen output
+
+### Git Module (src/git.rs)
+
+- **Public functions:**
+  - `sync(secrets_dir, message)` - Full sync: commit local changes, pull --rebase, push
+- **Private helpers:**
+  - `pull_rebase(repo)` - Fetch + rebase via libgit2, with fallback to system `git`
+  - `push(repo)` - Push via libgit2, with fallback to system `git`
+- Supports `CRYPTA_USE_SYSTEM_GIT` env var to bypass libgit2 entirely
 
 ### Binary (src/main.rs)
 
-- Uses `clap` with derive macros for CLI with subcommands
-- Subcommands: `words` (alias `w`), `sentences` (alias `s`), `paragraphs` (alias `p`)
-- Default subcommand: `paragraphs` (when no subcommand specified)
-- Global options: `--count`, `--min`, `--max`
+- Uses `clap` with derive macros for CLI
+- Subcommands: `store` (s), `set` (se), `get` (g), `lookup` (l), `list` (ls), `delete` (rm), `init` (i), `sync` (sy), `password` (pwd)
+- Key resolution: parameter or `SECRET_ID` environment variable
 - Delegates to library functions
-- Handles error display and exit codes
+- Error handling with `anyhow`
 
 ## Key Dependencies
 
-- **lipsum 0.9**: Lorem Ipsum generation with RNG support
-- **clap 4.5**: CLI argument parsing with derive features
-- **rand 0.8**: Random number generation
-- **rand_chacha 0.3** (dev): Deterministic RNG for tests
+- **clap 4.6**: CLI argument parsing with derive features
+- **serde_yaml 0.9**: YAML serialization/deserialization
+- **anyhow 1.0**: Error handling
+- **git2 0.21**: libgit2 bindings for Git operations
+- **arboard 3.6**: Cross-platform clipboard
+- **tracing 0.1 + tracing-subscriber 0.3**: Structured logging with env-filter
+- **rand 0.10**: Random password generation
+- **tempfile 3.27** (dev): Temporary directories for tests
 
 ## Code Style & Conventions
 
@@ -55,15 +83,9 @@ crypta/
 - Edition 2021
 - Minimum Rust version: 1.70+
 
-### Function Naming
-
-- Use snake_case for functions
-- Descriptive names: `generate_*` for generation functions
-- Generic RNG parameter always `<R: Rng>`
-
 ### Error Handling
 
-- Use `Result<String, String>` for generation functions
+- Use `anyhow::Result` and `anyhow::Context` for all fallible functions
 - Error messages in Spanish to match CLI
 - Use `eprintln!` for errors in binary
 - Exit code 1 for errors
@@ -71,47 +93,25 @@ crypta/
 ### CLI Arguments
 
 - Use clap's derive macros with subcommands (`#[derive(Subcommand)]`)
-- Subcommands: `words` (alias `w`), `sentences` (alias `s`), `paragraphs` (alias `p`)
-- Default subcommand: `paragraphs` when none specified
-- Global options with `global = true`: `-c/--count`, `--min`, `--max`
+- All commands have short aliases
 - Document with doc comments (shown in --help)
-- Defaults for all optional arguments
 - Spanish descriptions for Spanish-speaking users
-- `--min` and `--max` apply to both sentences and paragraphs:
-  - Default: min=40, max=80
-  - If only min specified: max = min * 2
-  - If only max specified: min = max / 2
-  - If both specified: use given values
-  - **Validations:**
-    - min cannot be negative (show error and exit)
-    - max cannot be negative (show error and exit)
-    - If min=0 and max=0: use defaults (40, 80)
 
-### Randomness
+### Logging
 
-- Always use `&mut R: Rng` generic parameter in library
-- Use `thread_rng()` in binary
-- Use `ChaCha8Rng::seed_from_u64()` in tests for determinism
-- Variable ranges with `rng.gen_range(min..=max)`
-
-### Text Generation
-
-- Use `lipsum::lipsum_words_with_rng(&mut *rng, count)` for words
-- Join multiple items with `Vec::join()`
-- Paragraph separator: `"\n\n"`
-- Sentence separator: `" "`
-- Always generate random content (never static)
+- Use `tracing` for structured logging
+- Default level: `error` (configurable via `RUST_LOG`)
+- Use `info!` for operation start/end
+- Use `debug!` for detailed diagnostics
 
 ## Testing Guidelines
 
-### Unit Tests (tests/test_crypta.rs, tests/test_paragraph_length.rs)
+### Unit Tests
 
-- Use `ChaCha8Rng` with fixed seeds for deterministic tests
+- Inline `#[cfg(test)] mod tests` in source files
+- Separate test files in `tests/` directory for integration tests
+- Use `tempfile::TempDir` for filesystem tests
 - Test all public functions
-- Test abbreviations (`w`, `s`, `p`)
-- Test error cases
-- Test randomness vs determinism
-- Test custom paragraph lengths
 
 ### Integration Tests (tests/integration_tests.rs)
 
@@ -119,84 +119,46 @@ crypta/
 - Test via `env!("CARGO_BIN_EXE_crypta")`
 - Verify exit codes
 - Check stdout and stderr
-- Test all CLI argument combinations
-- Test default behavior
-- Verify actual output format
-
-### Test Structure
-
-```rust
-#[test]
-fn test_name() {
-    // Setup
-    let mut rng = ChaCha8Rng::seed_from_u64(42);
-    
-    // Execute
-    let result = generate_function(&mut rng, params);
-    
-    // Assert
-    assert!(result.is_ok());
-    // More assertions
-}
-```
+- Test all CLI subcommands and their short aliases
 
 ## Common Patterns
 
-### Adding a New Generation Type
+### Adding a New Secret Operation
 
-1. Add function to `src/lib.rs` with generic RNG
-2. Update `generate_content()` to handle new type
-3. Add CLI argument if needed in `src/main.rs`
-4. Add unit tests in `tests/test_crypta.rs`
+1. Add function to `src/secrets.rs`
+2. Add CLI command variant in `src/main.rs`
+3. Add match arm in `run_command()`
+4. Add tests in `tests/secrets_tests.rs`
 5. Add integration tests in `tests/integration_tests.rs`
 
-### Adding a CLI Option
+### Encryption Flow
 
-1. Add field to `Args` struct in `src/main.rs`
-2. Add `#[arg(...)]` attribute with docs
-3. Use the option in main logic
-4. Update README with new option
-5. Add integration tests
+1. Decrypt existing file with `sops -d` (or start with empty YAML)
+2. Parse YAML, modify the mapping
+3. Serialize back to YAML string
+4. Pipe to `sops -e` via stdin for encryption
+5. Write encrypted bytes to file
 
-### Testing New Features
+### Git Sync Flow
 
-- **Always** add both unit and integration tests
-- Use deterministic RNG for reproducible unit tests
-- Test edge cases (empty, very large, invalid input)
-- Verify error messages
+1. Check for local changes via `repo.statuses()`
+2. If changes: add all, write tree, commit
+3. Fetch from origin + rebase (libgit2, fallback to system git)
+4. Push to origin (libgit2, fallback to system git)
 
 ## Important Notes
 
-- **Never use static text**: Always generate random content with RNG
-- **Use `&mut *rng`**: When passing RNG in loops to avoid move errors
 - **Spanish messages**: Error messages and CLI help in Spanish
-- **Ranges inclusive**: Use `min..=max` for inclusive ranges
-- **Word count tolerance**: Allow ±10% variance in tests due to lipsum's behavior
 - **Exit codes**: Use `std::process::exit(1)` for errors
-
-## Feature Flags
-
-Currently none. Keep it simple.
-
-## Performance Considerations
-
-- No need for optimization; generation is already fast
-- Prefer readability over micro-optimizations
-- String allocation is acceptable for this use case
-
-## When Adding New Features
-
-1. **Think library-first**: Add logic to `lib.rs`, not `main.rs`
-2. **Test thoroughly**: Unit tests + integration tests
-3. **Document**: Update README with examples
-4. **Keep it simple**: Avoid over-engineering
-5. **Spanish UX**: User-facing text in Spanish
+- **No hardcoded secrets**: All secrets are encrypted with SOPS/Age
+- **No temp files**: Encryption uses stdin pipe, never writes plaintext to disk
+- **SSH auth**: libgit2 handles SSH via ssh-agent or key files; fallback to system git if libgit2 fails
 
 ## Common Tasks
 
 ### Run the app
 ```bash
-cargo run -- words -c 10
+cargo run -- --help
 ```
 
 ### Run tests
@@ -218,53 +180,3 @@ cargo clippy
 ```bash
 cargo build --release
 ```
-
-## Examples to Guide Copilot
-
-### Good: Generic RNG function
-```rust
-pub fn generate_something<R: Rng>(rng: &mut R, count: usize) -> String {
-    // implementation
-}
-```
-
-### Bad: Hardcoded RNG
-```rust
-pub fn generate_something(count: usize) -> String {
-    let mut rng = thread_rng(); // Don't do this in lib
-}
-```
-
-### Good: Error handling
-```rust
-match content_type {
-    "words" => Ok(generate_words(rng, count)),
-    _ => Err(format!("Tipo de contenido inválido: '{}'", content_type)),
-}
-```
-
-### Good: Test with deterministic RNG
-```rust
-let mut rng = ChaCha8Rng::seed_from_u64(42);
-let result1 = generate_words(&mut rng, 10);
-let mut rng = ChaCha8Rng::seed_from_u64(42);
-let result2 = generate_words(&mut rng, 10);
-assert_eq!(result1, result2); // Deterministic
-```
-
-## Questions to Ask Before Changing Code
-
-1. Does this belong in `lib.rs` or `main.rs`?
-2. Have I added tests for this change?
-3. Are error messages in Spanish?
-4. Does this maintain the generic RNG pattern?
-5. Is the README updated?
-
-## Current Test Coverage
-
-- 47 total tests (all passing)
-- 12 unit tests (core functions)
-- 4 unit tests (paragraph lengths)
-- 31 integration tests (CLI with subcommands, min/max auto-calculation, error validation)
-
-**Goal**: Maintain 100% test pass rate. Add tests for every new feature.

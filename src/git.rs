@@ -149,37 +149,15 @@ fn pull_rebase(repo: &Repository) -> Result<()> {
             Ok(s) if s.success() => {
                 debug!("Fallback git pull --rebase succeeded");
                 info!("Rebase completado exitosamente (fallback)");
+                Ok(())
             }
-            Ok(s) => {
-                return Err(anyhow!("Fallback git pull failed with exit code: {}", s));
-            }
-            Err(err) => {
-                return Err(anyhow!("Failed to execute fallback git: {}", err));
-            }
+            Ok(s) => Err(anyhow!("Fallback git pull failed with exit code: {}", s)),
+            Err(err) => Err(anyhow!("Failed to execute fallback git: {}", err)),
         }
     } else {
         info!("Rebase completado exitosamente");
+        Ok(())
     }
-
-    // Obtener referencias
-    let fetch_head = repo.find_reference("FETCH_HEAD")?;
-    let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
-
-    // Rebase
-    debug!("Ejecutando rebase");
-    let mut rebase = repo.rebase(None, Some(&fetch_commit), None, None)?;
-
-    let mut ops = 0;
-    while let Some(_op) = rebase.next() {
-        ops += 1;
-        rebase.commit(None, &Signature::now("crypta", "crypta@local")?, None)?;
-    }
-
-    debug!("Aplicadas {} operaciones de rebase", ops);
-    rebase.finish(None)?;
-    info!("Rebase completado exitosamente");
-
-    Ok(())
 }
 
 fn push(repo: &Repository) -> Result<()> {
