@@ -1,19 +1,30 @@
 # Changelog
-## [0.2.2] - 2026-08-29
+## [0.2.3] - 2026-09-25
 
 ### Bug Fixes
 
+- Fix(completion): usar clap_complete::generate para todos los shells
 - Fix(completion): usar clap_complete::generate para todos los shells
 - Hotfix(completion): v0.2.2
 
 ### Dependencies
 
 - *(deps)* Bump rand from 0.10.0 to 0.10.1
+- *(deps)* Deps: actualizar dependencias
+- *(deps)* Deps: actualizar dependencias
+
+### Documentation
+
+- Docs(changelog): v0.2.2
 
 ### Miscellaneous Tasks
 
 - Update Cargo.lock after v0.2.0 dependencies
 - Chore(release): v0.2.1
+
+### Other
+
+- V0.2.3
 ## [0.2.0] - 2026-08-29
 
 ### Bug Fixes
