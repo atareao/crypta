@@ -41,8 +41,8 @@ Release workflow (`.github/workflows/release.yml`) only triggers on GitHub relea
 
 ## Architecture
 
-- **Library** (`src/lib.rs`): re-exports `pub mod secrets` and `pub mod git`
-- **Binary** (`src/main.rs`): clap CLI with 9 subcommands, delegates to library
+- **Library** (`src/lib.rs`): re-exports `pub mod secrets`, `pub mod git`, and `pub mod templates`
+- **Binary** (`src/main.rs`): clap CLI with 10 subcommands, delegates to library
 - **Secrets** (`src/secrets.rs`): decrypts `~/.secrets/secrets.yml` with `sops -d`, modifies YAML, re-encrypts via `sops -e` stdin pipe (never writes plaintext to disk)
 - **Git** (`src/git.rs`): commit → pull --rebase → push via libgit2, falls back to system `git`
 
@@ -57,6 +57,7 @@ Release workflow (`.github/workflows/release.yml`) only triggers on GitHub relea
 | `list` | `ls` | — | Key list |
 | `delete [KEY]` | `rm` | — | Removes from YAML |
 | `init` | `i` | — | Creates `~/.secrets/`, Age key, SOPS config |
+| `render [FILE]` | `r` | stdin (sin file) o archivo | stdout (template renderizado) |
 | `sync [MSG]` | `sy` | — | Git commit + pull --rebase + push |
 | `password [-l N] [--special]` | `pwd` | — | Random password to stdout |
 

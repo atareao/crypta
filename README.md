@@ -1,4 +1,154 @@
-# 🔐 Crypta
+# AGENT DIRECTIVES: OPENSPEC (SDD) + TDD WORKFLOW
+
+## ⚠️ REGLA DE ORO — LEER ANTES DE ACTUAR
+
+**ANTES de escribir o editar CUALQUIER archivo de código fuente (Rust, TypeScript, JSX, CSS, etc.),
+debes ejecutar `just check-spec` para confirmar que existe un change proposal aprobado.**
+
+Si `just check-spec` falla:
+1. DETENTE inmediatamente.
+2. Informa al usuario que no hay un change proposal activo.
+3. Pregunta si quiere crear uno con `openspec new change <feature>`.
+4. NO escribas código hasta recibir aprobación explícita.
+
+**SALTARSE ESTE PASO ES VIOLACIÓN DEL PROTOCOLO.**
+
+---
+
+## I. CORE PRINCIPLES & GOALS
+
+- **Phase 0 — Legacy Support:** If modifying existing code without specs or tests, establish a baseline spec and characterization tests before introducing changes.
+- **Phase 1 — SDD (OpenSpec):** No new code or tests may be written before a spec change proposal exists in `openspec/changes/<feature>/` and is approved by the user.
+- **Phase 2 — TDD (Red-Green-Refactor):** Once the spec is approved, code MUST be developed strictly test-first using terminal commands.
+- **Strict Verification:** Always run CLI test suites using terminal tools. Never assume code or tests pass/fail without CLI confirmation.
+
+---
+
+## II. EXECUTION WORKFLOW
+
+### Phase 0: Legacy Code Preparation (Conditional)
+
+*Execute this phase ONLY if modifying an existing module/file that lacks OpenSpec documentation or tests.*
+
+1. **Characterization Spec (As-Is):**
+   - Inspect the target file/module.
+   - Generate a baseline spec in `openspec/specs/<module>/spec.md` reflecting current behavior.
+2. **Characterization Tests:**
+   - Write Rust (`#[test]`) or React/TS (`vitest` / `@testing-library/react`) tests matching current behavior.
+   - Run tests via CLI (`cargo test` or `npx vitest run`) to confirm all pass in **GREEN**.
+
+### Phase 1: SDD Protocol (OpenSpec)
+
+When the user requests a new feature, bug fix, or refactor:
+
+1. **Create the Change Proposal:**
+   - Execute CLI command: `openspec new change <feature-name>`
+2. **Draft Specifications:**
+   - Populate `openspec/changes/<feature-name>/proposal.md` with intent, scope, and impact.
+   - Create spec deltas in `openspec/changes/<feature-name>/specs/<module>/spec.md`.
+   - Ensure the spec includes:
+     - **Contracts:** Rust types/structs/enums, TypeScript interfaces/props, API endpoints, or function signatures.
+     - **Scenarios (BDD style):** Detailed `Given / When / Then` clauses for happy path, error cases, and edge cases.
+   - Populate `openspec/changes/<feature-name>/tasks.md` with the TDD task checklist.
+3. **STOP & WAIT FOR APPROVAL:**
+   - Present the created specification to the user.
+   - **DO NOT** write application code or new tests until the user explicitly approves the spec.
+
+### Phase 2: TDD Protocol (Red-Green-Refactor)
+
+Once the user approves the spec (e.g., "Approved", "Looks good", "Proceed with TDD"):
+
+1. **RED (Write Failing Tests):**
+   - Read the `Given / When / Then` scenarios in `openspec/changes/<feature-name>/specs/`.
+   - Write tests in Rust or React/TypeScript corresponding to those scenarios.
+   - Execute CLI tests (`cargo test` or `npx vitest run`).
+   - **Verify:** Confirm test failure for the new functionality while any legacy tests remain **GREEN**.
+2. **GREEN (Minimal Implementation):**
+   - Write the absolute minimum code necessary to satisfy the failing tests.
+   - Execute CLI tests (`cargo test` or `npx vitest run`).
+   - Run type checks (`cargo check` or `npx tsc --noEmit`).
+   - **Verify:** Confirm all tests pass (100% green) and no compilation/type errors exist.
+3. **REFACTOR (Clean & Consolidate):**
+   - Clean up code formatting, types, and structure without altering behavior.
+   - Run linters (`cargo clippy -- -D warnings` / `npm run lint`).
+   - Re-run test suites via CLI to guarantee no regressions.
+4. **CONSOLIDATE & ARCHIVE:**
+   - Mark completed items in `tasks.md`.
+   - Once all scenarios pass, run `openspec archive <feature-name>` to merge the delta into `openspec/specs/`.
+
+### Practical Lessons Learned (SDD + TDD)
+
+#### Archive requires exact header matching
+`openspec archive` busca el header exacto del delta en la spec destino. Si el header del delta es `"### Requirement: Pipeline evaluation order (WAF first)"` pero la spec tiene `"### Requirement: Pipeline evaluation order"`, el archive falla. **Los headers del delta deben copiar EXACTAMENTE los de la spec destino.**
+
+#### Si reescribes la spec directamente, no intentes archivar
+Si modificaste `openspec/specs/<module>/spec.md` a mano (fuera del mecanismo de archive), el change proposal correspondiente queda huérfano. No se puede archivar porque los headers ya no coinciden. **Solución: eliminar el directorio del change proposal** (`rm -rf openspec/changes/<feature>/`).
+
+#### Cambios en cascada
+Eliminar una entidad (ej. Whitelist/Blacklist) puede dejar código muerto en otras partes (ej. `AppError::Conflict`, tests de Conflict). El REFACTOR phase debe incluir la limpieza de estos artefactos. **Siempre ejecutar `cargo clippy -- -D warnings` tras el GREEN phase para detectar código/ variantes no usados.**
+
+#### `openspec archive --yes` no bypassa validación de headers
+La flag `--yes` salta la comprobación de tareas incompletas, pero NO la validación de que los headers del delta existan en la spec destino. Si los headers no matchean, el archive igual falla.
+
+#### Mantén openspec artifacts sincronizados con el código
+Si implementas un cambio en código pero no actualizas los artifacts de openspec (tasks, proposal), el change proposal queda "stuck" — no se puede archivar ni continuar. **Antes de empezar un nuevo cambio, verifica que no haya cambios activos huerfanos con `openspec list`.**
+
+---
+
+## III. PROJECT CONFIGURATION & CONVENTIONS
+
+### Stack Commands
+
+#### Backend: Rust
+- **Test Runner:** `cargo test` (or `cargo nextest run` if available).
+- **Type Checking & Linting:** `cargo check` and `cargo clippy -- -D warnings` (enforce zero warnings).
+- **Formatting:** `cargo fmt --check`
+- **Conventions:**
+  - Structs and types placed in domain modules or `src/models/`.
+  - Unit tests placed in the same file under `#[cfg(test)]`.
+  - Integration and API tests placed in `tests/`.
+
+#### Frontend: React + TypeScript
+- **Test Runner:** `npx vitest run` or `npm test -- --watch=false` (single-pass execution).
+- **Type Checking:** `npx tsc --noEmit` (mandatory during GREEN/REFACTOR steps).
+- **Linting & Formatting:** `npm run lint` / `npx eslint .`
+- **Conventions:**
+  - Components in `src/components/`, hooks in `src/hooks/`.
+  - Component tests colocated as `Component.test.tsx` using `@testing-library/react`.
+  - User-centric testing behavior using `@testing-library/user-event` instead of implementation details.
+
+### Custom Repository Rules
+
+#### Desarrollo: Podman
+El proyecto usa **Podman** como runtime de contenedores para desarrollo local.
+- `just dev` → `podman compose up -d --build` (reconstruye imagen + arranca)
+- `just dev-docker` → alternativa con Docker
+- El binario de Podman está en `/usr/bin/podman`
+- Las imágenes se construyen con `podman compose build`
+
+#### Entorno de producción
+- `docker-compose.prod.yml` despliega con frontend separado (nginx) + PocketID
+- `docker-compose.yml` es para desarrollo con frontend embebido
+
+---
+
+## IV. RESPONSE FORMAT & STATUS MESSAGES
+
+Always prefix your progress updates with the current status tag:
+
+```text
+[LEGACY - INSPECT] Creating baseline spec & characterization tests.
+[OPENSPEC - DRAFT] Generating change proposal in openspec/changes/...
+[OPENSPEC - WAITING] Spec generated. Awaiting user review and approval.
+[TDD - RED] Creating tests for scenario <Name> -> Running CLI tests.
+[TDD - GREEN] Implementing minimal code -> Running CLI tests & type checks.
+[TDD - REFACTOR] Refactoring code -> Running Clippy/ESLint & tests.
+[OPENSPEC - ARCHIVE] Archiving change into openspec/specs/.
+```
+
+
+## V. CURRENT PROJECT STATE
+
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,11 +158,11 @@
 
 Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para encriptación de secretos y sincronización automática con Git.
 
-## ✨ Características
+### ✨ Características
 
 - 🔒 **Encriptación mediante SOPS** (Age por defecto, soporta AWS KMS, GCP KMS, Azure Key Vault y PGP vía SOPS)
 - 📋 **Portapapeles integrado** multiplataforma (Linux, macOS, Windows)
-- 📝 **Salida por stdout** para scripts con comando `lookup`
+- 📝 **Templating Jinja2** - Renderiza plantillas con `{{ variables }}` desde el store
 - 🔄 **Sincronización Git** automática con rebase
 - ⚡ **Setup completamente automatizado** - `init` configura todo por ti
 - 🦀 **Rust + SOPS nativo** - Mejor compatibilidad
@@ -21,9 +171,9 @@ Gestor de secretos moderno escrito en Rust puro, compatible con SOPS/Age para en
 - 📦 **Modular** - Biblioteca reutilizable + CLI
 - 🔍 **Debugging con tracing** - Logs configurables con RUST_LOG
 
-## 📦 Instalación
+### 📦 Instalación
 
-### Desde el código fuente
+#### Desde el código fuente
 
 ```bash
 git clone https://github.com/atareao/crypta.git
@@ -32,22 +182,22 @@ cargo build --release
 sudo cp target/release/crypta /usr/local/bin/
 ```
 
-### Usando Cargo
+#### Usando Cargo
 
 ```bash
 cargo install crypta
 ```
 
-## 🔑 Configuración
+### 🔑 Configuración
 
-### Configuración completamente automatizada ✨
+#### Configuración completamente automatizada ✨
 
 Crypta incluye un comando de inicialización que configura **todo automáticamente**:
 
 ```bash
-# Un solo comando configura todo: directorio, clave Age y SOPS
+## Un solo comando configura todo: directorio, clave Age y SOPS
 crypta init
-# O usando el alias corto:
+## O usando el alias corto:
 crypta i
 ```
 
@@ -60,13 +210,13 @@ Esto crea **automáticamente**:
 Solo necesitas configurar la variable de entorno una vez:
 
 ```bash
-# Añadir a tu ~/.bashrc, ~/.zshrc, o ~/.config/fish/config.fish
+## Añadir a tu ~/.bashrc, ~/.zshrc, o ~/.config/fish/config.fish
 export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
 ```
 
 ¡Y listo! Ya puedes usar crypta inmediatamente.
 
-### 📁 Estructura de archivos
+#### 📁 Estructura de archivos
 
 Crypta guarda toda su configuración y datos en **`~/.secrets/`** (ruta fija, hardcodeada en el código):
 
@@ -75,8 +225,8 @@ Crypta guarda toda su configuración y datos en **`~/.secrets/`** (ruta fija, ha
 ├── secrets.yml              ← Secretos cifrados con SOPS/Age
 ├── .sops.yaml               ← Reglas de creación SOPS
 └── sops/
-    └── age/
-        └── key.txt          ← Clave privada Age (¡no compartir!)
+#    └── age/
+#        └── key.txt          ← Clave privada Age (¡no compartir!)
 ```
 
 | Archivo | Propósito |
@@ -85,7 +235,7 @@ Crypta guarda toda su configuración y datos en **`~/.secrets/`** (ruta fija, ha
 | `~/.secrets/.sops.yaml` | Configuración de SOPS: define qué clave Age usar para cifrar. Se genera automáticamente en `crypta init`. |
 | `~/.secrets/sops/age/key.txt` | Clave privada Age (Curve25519). Necesaria para descifrar. **Protégela como cualquier contraseña maestra.** |
 
-#### Variables de entorno
+##### Variables de entorno
 
 | Variable | Obligatoria | Descripción |
 |---|---|---|
@@ -95,376 +245,407 @@ Crypta guarda toda su configuración y datos en **`~/.secrets/`** (ruta fija, ha
 
 > **Nota:** La ruta `~/.secrets/` está fijada en el código fuente (`src/main.rs`). No es posible cambiarla mediante variable de entorno ni archivo de configuración.
 
-## 🚀 Uso
+### 🚀 Uso
 
-### Configuración inicial (solo una vez)
+#### Configuración inicial (solo una vez)
 
 ```bash
-# 1. Inicializar crypta (totalmente automatizado)
+## 1. Inicializar crypta (totalmente automatizado)
 crypta init
 
-# 2. Configurar variable de entorno (sigue las instrucciones mostradas)
+## 2. Configurar variable de entorno (sigue las instrucciones mostradas)
 export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
 
-# 3. ¡Listo! Crear tu primer secreto
+## 3. ¡Listo! Crear tu primer secreto
 crypta set --key TEST --value "mi-primer-secreto"
 ```
 
-### Almacenar/Actualizar un secreto
+#### Almacenar/Actualizar un secreto
 
-#### Usando `store` (valor desde stdin)
+##### Usando `store` (valor desde stdin)
 
 ```bash
-# Secreto simple
+## Secreto simple
 echo "mi-secreto-super-seguro" | crypta store API_KEY
-# O usando comando corto:
+## O usando comando corto:
 echo "mi-secreto-super-seguro" | crypta s API_KEY
 
-# Desde variable
+## Desde variable
 printf "$SECRET_VALUE" | crypta store DATABASE_URL
-# O usando comando corto:
+## O usando comando corto:
 printf "$SECRET_VALUE" | crypta s DATABASE_URL
 
-# Contenido multilínea (ej: claves SSH)
+## Contenido multilínea (ej: claves SSH)
 cat ~/.ssh/id_rsa | crypta store SSH_PRIVATE_KEY
 
-# JSON o configuración compleja
+## JSON o configuración compleja
 cat << EOF | crypta store DB_CONFIG
 {
-  "host": "localhost",
-  "port": 5432,
-  "user": "admin",
-  "password": "secret123"
+#  "host": "localhost",
+#  "port": 5432,
+#  "user": "admin",
+#  "password": "secret123"
 }
 EOF
 ```
 
-#### Usando `set` (valor como argumento)
+##### Usando `set` (valor como argumento)
 
 ```bash
-# Sintaxis tradicional - ideal para scripts simples
+## Sintaxis tradicional - ideal para scripts simples
 crypta set API_KEY "mi-secreto-super-seguro"
 crypta set DATABASE_URL "postgresql://user:pass@localhost/db"
 
-# O usando comandos cortos:
+## O usando comandos cortos:
 crypta se API_KEY "mi-secreto-super-seguro"
 crypta se DATABASE_URL "postgresql://user:pass@localhost/db"
 ```
 
-### Obtener un secreto (copia al portapapeles)
+#### Obtener un secreto (copia al portapapeles)
 
 ```bash
 crypta get API_KEY
-# 📋 Secreto 'API_KEY' copiado al portapapeles.
+## 📋 Secreto 'API_KEY' copiado al portapapeles.
 
-# O usando comando corto:
+## O usando comando corto:
 crypta g API_KEY
 ```
 
-### Mostrar un secreto (stdout)
+#### Mostrar un secreto (stdout)
 
 Útil para scripts y captura en variables:
 
 ```bash
-# Mostrar directamente
+## Mostrar directamente
 crypta lookup API_KEY
-# O usando comando corto:
+## O usando comando corto:
 crypta l API_KEY
 
-# Sin logs (limpio para scripts)
+## Sin logs (limpio para scripts)
 RUST_LOG=off crypta lookup API_KEY
-# O usando comando corto:
+## O usando comando corto:
 RUST_LOG=off crypta l API_KEY
 
-# Capturar en variable (fish)
+## Capturar en variable (fish)
 set TOKEN (RUST_LOG=off crypta lookup API_KEY)
-# O usando comando corto:
+## O usando comando corto:
 set TOKEN (RUST_LOG=off crypta l API_KEY)
 
-# Capturar en variable (bash)
+## Capturar en variable (bash)
 TOKEN=$(RUST_LOG=off crypta lookup API_KEY)
-# O usando comando corto:
+## O usando comando corto:
 TOKEN=$(RUST_LOG=off crypta l API_KEY)
 
-# Usar en pipes
+## Usar en pipes
 crypta lookup API_KEY | wl-copy
 crypta l API_KEY | wl-copy  # comando corto
 ```
 
-### Listar todas las claves
+#### Listar todas las claves
 
 ```bash
 crypta list
-# O usando comando corto:
+## O usando comando corto:
 crypta ls
 
-# 🔑 Claves en /home/user/.secrets/secrets.yml:
-# - API_KEY
-# - DATABASE_URL
+## 🔑 Claves en /home/user/.secrets/secrets.yml:
+## - API_KEY
+## - DATABASE_URL
 ```
 
-### Eliminar un secreto
+#### Eliminar un secreto
 
 ```bash
 crypta delete API_KEY
-# 🗑️ Secreto 'API_KEY' eliminado.
+## 🗑️ Secreto 'API_KEY' eliminado.
 ```
 
-### Sincronizar con Git
+#### Sincronizar con Git
 
 ```bash
 crypta sync
-# 🔄 Sincronizando con el remoto...
-# 🚀 Sincronización completada.
+## 🔄 Sincronizando con el remoto...
+## 🚀 Sincronización completada.
 
-# Con mensaje personalizado
+## Con mensaje personalizado
 crypta sync "Añadido nuevo secreto de producción"
 ```
 
-## 💡 Ejemplos Prácticos
+#### Renderizar plantillas Jinja2
 
-### Configuración inicial (completamente automatizada)
+Renderiza una plantilla Jinja2 reemplazando las variables con los valores del store de secretos:
 
 ```bash
-# 🎩 Configuración mágica en 30 segundos
+## Desde archivo
+crypta render config.conf.j2
+
+## Desde stdin
+echo 'Host: {{ DB_HOST }}; Port: {{ DB_PORT }}' | crypta render
+
+## Redirigir salida a archivo
+crypta render template.j2 > output.conf
+
+## Con variables anidadas y filtros
+crypta render - << 'EOF'
+database:
+  host: {{ DB_HOST }}
+  port: {{ DB_PORT | default("5432") }}
+  password: {{ DB_PASSWORD }}
+EOF
+```
+
+Si una variable de la plantilla no existe en el store, crypta muestra un error claro:
+
+```
+❌ Error: La variable 'DB_HOST' no existe en el store de secretos
+```
+
+> **Nota:** Las variables se resuelven desde el archivo `~/.secrets/secrets.yml` desencriptado con sops. El contenido renderizado se escribe únicamente por stdout, nunca a disco.
+
+### 💡 Ejemplos Prácticos
+
+#### Configuración inicial (completamente automatizada)
+
+```bash
+## 🎩 Configuración mágica en 30 segundos
 crypta init
 
-# Crypta muestra algo como:
-# 🔑 Generando nueva clave Age: ~/.secrets/sops/age/key.txt
-# 📄 Archivo de configuración creado: ~/.secrets/.sops.yaml
-# ✅ Inicialización completada exitosamente
-# 💡 Para usar crypta, añade esto a tu shell:
-#    export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
+## Crypta muestra algo como:
+## 🔑 Generando nueva clave Age: ~/.secrets/sops/age/key.txt
+## 📄 Archivo de configuración creado: ~/.secrets/.sops.yaml
+## ✅ Inicialización completada exitosamente
+## 💡 Para usar crypta, añade esto a tu shell:
+##    export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
 
-# Configurar variable de entorno (solo una vez)
+## Configurar variable de entorno (solo una vez)
 export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt
 echo 'export SOPS_AGE_KEY_FILE=~/.secrets/sops/age/key.txt' >> ~/.bashrc
 
-# 🎉 ¡Listo! Probar con tu primer secreto
+## 🎉 ¡Listo! Probar con tu primer secreto
 crypta set --key SALUDO --value "Hola desde crypta!"
 crypta lookup SALUDO
-# Hola desde crypta!
+## Hola desde crypta!
 ```
 
-### Usar secretos en scripts
+#### Usar secretos en scripts
 
 ```bash
 #!/bin/bash
-# Almacenar desde archivo
+## Almacenar desde archivo
 cat /path/to/secret.key | crypta store API_KEY
-# O usando variable de entorno
+## O usando variable de entorno
 SECRET_ID=API_KEY cat /path/to/secret.key | crypta store
 
-# Almacenar desde comando
+## Almacenar desde comando
 kubectl config view --raw | crypta store KUBECONFIG
 
-# Usar variable de entorno para workflows automatizados
+## Usar variable de entorno para workflows automatizados
 SECRET_ID=DATABASE_PASSWORD echo "super-secret-db-pass" | crypta store
 
-# Exportar secreto como variable de entorno
+## Exportar secreto como variable de entorno
 export API_KEY=$(RUST_LOG=off crypta lookup API_KEY)
-# O usando SECRET_ID
+## O usando SECRET_ID
 export API_KEY=$(SECRET_ID=API_KEY RUST_LOG=off crypta lookup)
 
-# Usar en curl
+## Usar en curl
 curl -H "Authorization: Bearer $(RUST_LOG=off crypta lookup API_TOKEN)" \
-     https://api.example.com/data
+#     https://api.example.com/data
 ```
 
-### Workflows con SECRET_ID
+#### Workflows con SECRET_ID
 
 ```bash
 #!/bin/bash
-# Script que procesa múltiples secretos
+## Script que procesa múltiples secretos
 SECRETS=("API_KEY" "DB_PASS" "SSL_CERT")
 
 for secret in "${SECRETS[@]}"; do
-    echo "Procesando $secret..."
-    SECRET_ID="$secret"
+#    echo "Procesando $secret..."
+#    SECRET_ID="$secret"
 
-    # Verificar si existe
-    if SECRET_ID="$secret" crypta lookup >/dev/null 2>&1; then
-        echo "✅ $secret existe"
-    else
-        echo "⚠️ $secret no encontrado"
-        # Generar nuevo secreto
-        openssl rand -base64 32 | SECRET_ID="$secret" crypta store
-        echo "🆕 $secret creado"
-    fi
+#    # Verificar si existe
+#    if SECRET_ID="$secret" crypta lookup >/dev/null 2>&1; then
+#        echo "✅ $secret existe"
+#    else
+#        echo "⚠️ $secret no encontrado"
+#        # Generar nuevo secreto
+#        openssl rand -base64 32 | SECRET_ID="$secret" crypta store
+#        echo "🆕 $secret creado"
+#    fi
 done
 ```
 
-### Integración con Docker
+#### Integración con Docker
 
 ```bash
-# Pasar secreto a Docker
+## Pasar secreto a Docker
 docker run -e DB_PASS=$(RUST_LOG=off crypta lookup DB_PASSWORD) myapp
 
-# En docker-compose (usar .env file generado)
+## En docker-compose (usar .env file generado)
 RUST_LOG=off crypta lookup DATABASE_URL > .env
 
-# Almacenar configuración Docker
+## Almacenar configuración Docker
 docker-compose config | crypta store DOCKER_COMPOSE_CONFIG
 ```
 
-### Fish shell
+#### Fish shell
 
 ```fish
-# Función para cargar secretos
+## Función para cargar secretos
 function load_secret
-    set -gx $argv[1] (RUST_LOG=off crypta lookup $argv[2])
+#    set -gx $argv[1] (RUST_LOG=off crypta lookup $argv[2])
 end
 
-# Almacenar desde clipboard
+## Almacenar desde clipboard
 wl-paste | crypta store CLIPBOARD_SECRET
 
-# Generar y almacenar password
+## Generar y almacenar password
 openssl rand -base64 32 | crypta store RANDOM_PASSWORD
 
-# Uso
+## Uso
 load_secret API_KEY my_api_key
 echo $API_KEY
 ```
 
-## 🔥 Ejemplos Avanzados
+### 🔥 Ejemplos Avanzados
 
-### Generar contraseña
+#### Generar contraseña
 
 Genera una contraseña aleatoria y la muestra por stdout. Opciones:
 
 ```bash
-# Genera una contraseña de 32 caracteres (por defecto)
+## Genera una contraseña de 32 caracteres (por defecto)
 crypta password
 
-# Especificar longitud
+## Especificar longitud
 crypta password --length 16
 crypta password -l 16
 
-# Incluir caracteres especiales
+## Incluir caracteres especiales
 crypta password --length 24 --special
 crypta password -l 24 --special
 ```
 
-### Setup automatizado para equipos
+#### Setup automatizado para equipos
 
 ```bash
 #!/bin/bash
-# Script de configuración completamente automatizado para nuevos desarrolladores
+## Script de configuración completamente automatizado para nuevos desarrolladores
 
 echo "🚀 Configurando crypta para el equipo..."
 
-# Inicializar crypta (genera clave Age y configura SOPS automáticamente)
+## Inicializar crypta (genera clave Age y configura SOPS automáticamente)
 crypta init
 
-# Obtener la ruta de la clave generada
+## Obtener la ruta de la clave generada
 AGE_KEY_FILE=$(find ~/.secrets -name "key.txt" -type f | head -1)
 
 if [ -n "$AGE_KEY_FILE" ]; then
-    echo "⚙️  Configurando variable de entorno..."
+#    echo "⚙️  Configurando variable de entorno..."
 
-    # Detectar shell y configurar apropiadamente
-    if [ -n "$BASH_VERSION" ]; then
-        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.bashrc
-        echo "✅ Configuración añadida a ~/.bashrc"
-    elif [ -n "$ZSH_VERSION" ]; then
-        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.zshrc
-        echo "✅ Configuración añadida a ~/.zshrc"
-    else
-        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.profile
-        echo "✅ Configuración añadida a ~/.profile"
-    fi
+#    # Detectar shell y configurar apropiadamente
+#    if [ -n "$BASH_VERSION" ]; then
+#        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.bashrc
+#        echo "✅ Configuración añadida a ~/.bashrc"
+#    elif [ -n "$ZSH_VERSION" ]; then
+#        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.zshrc
+#        echo "✅ Configuración añadida a ~/.zshrc"
+#    else
+#        echo "export SOPS_AGE_KEY_FILE=$AGE_KEY_FILE" >> ~/.profile
+#        echo "✅ Configuración añadida a ~/.profile"
+#    fi
 
-    # Configurar para la sesión actual
-    export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
+#    # Configurar para la sesión actual
+#    export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 
-    echo "🗝 Probando configuración..."
-    crypta set --key TEAM_WELCOME --value "Bienvenido al equipo!"
+#    echo "🗝 Probando configuración..."
+#    crypta set --key TEAM_WELCOME --value "Bienvenido al equipo!"
 
-    if crypta lookup TEAM_WELCOME >/dev/null 2>&1; then
-        echo "🎉 ¡Configuración exitosa!"
-        echo "💡 Para usar crypta en nuevas terminales, ejecuta: source ~/.bashrc"
-        crypta rm TEAM_WELCOME  # Limpiar secreto de prueba
-    else
-        echo "⚠️  Algo salió mal. Reinicia la terminal e intenta de nuevo."
-    fi
+#    if crypta lookup TEAM_WELCOME >/dev/null 2>&1; then
+#        echo "🎉 ¡Configuración exitosa!"
+#        echo "💡 Para usar crypta en nuevas terminales, ejecuta: source ~/.bashrc"
+#        crypta rm TEAM_WELCOME  # Limpiar secreto de prueba
+#    else
+#        echo "⚠️  Algo salió mal. Reinicia la terminal e intenta de nuevo."
+#    fi
 fi
 
-# Configurar Git hooks para sincronización automática (si está en un repo)
+## Configurar Git hooks para sincronización automática (si está en un repo)
 if [ -d .git ]; then
-    echo "⚙️  Configurando hooks Git..."
-    cat << 'EOF' > .git/hooks/post-commit
+#    echo "⚙️  Configurando hooks Git..."
+#    cat << 'EOF' > .git/hooks/post-commit
 #!/bin/bash
 if [ -f ~/.secrets/secrets.yml ]; then
-    crypta sync "Auto-sync after commit $(git rev-parse --short HEAD)"
+#    crypta sync "Auto-sync after commit $(git rev-parse --short HEAD)"
 fi
 EOF
-    chmod +x .git/hooks/post-commit
-    echo "✅ Hook Git configurado"
+#    chmod +x .git/hooks/post-commit
+#    echo "✅ Hook Git configurado"
 fi
 
 echo "🎉 ¡Setup completado! Crypta está listo para usar."
-# Migrar desde archivos .env a crypta
+## Migrar desde archivos .env a crypta
 
-# Inicializar crypta si no está configurado
+## Inicializar crypta si no está configurado
 if [ ! -d ~/.secrets ]; then
-    crypta init
-    echo "⚠️  Configura tu clave Age antes de continuar"
-    exit 1
+#    crypta init
+#    echo "⚠️  Configura tu clave Age antes de continuar"
+#    exit 1
 fi
 
-# Migrar desde .env
+## Migrar desde .env
 if [ -f .env ]; then
-    echo "📦 Migrando desde .env..."
-    while IFS='=' read -r key value; do
-        if [[ $key =~ ^[A-Z_][A-Z0-9_]*$ ]] && [ ! -z "$value" ]; then
-            echo "Migrando $key..."
-            echo "$value" | crypta store "$key"
-        fi
-    done < .env
+#    echo "📦 Migrando desde .env..."
+#    while IFS='=' read -r key value; do
+#        if [[ $key =~ ^[A-Z_][A-Z0-9_]*$ ]] && [ ! -z "$value" ]; then
+#            echo "Migrando $key..."
+#            echo "$value" | crypta store "$key"
+#        fi
+#    done < .env
 
-    # Backup del archivo original
-    mv .env .env.bak
-    echo "✅ Migración completada. Backup en .env.bak"
+#    # Backup del archivo original
+#    mv .env .env.bak
+#    echo "✅ Migración completada. Backup en .env.bak"
 fi
 ```
 
-### Gestión de Certificados SSL
+#### Gestión de Certificados SSL
 
 ```bash
-# Almacenar certificados desde archivos
+## Almacenar certificados desde archivos
 cat /etc/ssl/certs/server.crt | crypta store SSL_CERT
 cat /etc/ssl/private/server.key | crypta store SSL_PRIVATE_KEY
 
-# Almacenar certificado desde comando
+## Almacenar certificado desde comando
 openssl req -x509 -newkey rsa:4096 -keyout - -out - -days 365 -nodes \
-    -subj "/CN=example.com" | crypta store SELF_SIGNED_CERT
+#    -subj "/CN=example.com" | crypta store SELF_SIGNED_CERT
 ```
 
-### DevOps y CI/CD
+#### DevOps y CI/CD
 
 ```bash
-# Almacenar tokens usando variables de entorno (ideal para CI/CD)
+## Almacenar tokens usando variables de entorno (ideal para CI/CD)
 SECRET_ID=GITHUB_TOKEN echo "$GITHUB_TOKEN" | crypta store
 SECRET_ID=GITLAB_TOKEN echo "$GITLAB_TOKEN" | crypta store
 
-# Configuración AWS
+## Configuración AWS
 aws configure list --profile production | crypta store AWS_CONFIG
 
-# Almacenar secrets de Kubernetes usando SECRET_ID
+## Almacenar secrets de Kubernetes usando SECRET_ID
 kubectl get secret my-secret -o yaml | SECRET_ID=K8S_SECRET crypta store
 
-# Pipeline de CI/CD automatizado
+## Pipeline de CI/CD automatizado
 #!/bin/bash
 DEPLOY_SECRETS=("API_KEY" "DB_PASSWORD" "JWT_SECRET")
 
 for secret_name in "${DEPLOY_SECRETS[@]}"; do
-    if [ ! -z "${!secret_name}" ]; then
-        echo "Almacenando $secret_name desde variable de entorno..."
-        SECRET_ID="$secret_name" echo "${!secret_name}" | crypta store
-    fi
+#    if [ ! -z "${!secret_name}" ]; then
+#        echo "Almacenando $secret_name desde variable de entorno..."
+#        SECRET_ID="$secret_name" echo "${!secret_name}" | crypta store
+#    fi
 done
 
-# Variables de entorno para deployment
+## Variables de entorno para deployment
 cat << EOF | SECRET_ID=PROD_ENV_VARS crypta store
 NODE_ENV=production
 DATABASE_URL=postgresql://prod-user:$(SECRET_ID=DB_PASS RUST_LOG=off crypta lookup)@prod-db:5432/myapp
@@ -473,86 +654,87 @@ API_BASE_URL=https://api.example.com
 EOF
 ```
 
-### Gestión de Bases de Datos
+#### Gestión de Bases de Datos
 
 ```bash
-# Connection strings completas
+## Connection strings completas
 echo "postgresql://user:$(openssl rand -hex 16)@localhost:5432/mydb" | crypta store DATABASE_URL
 
-# Scripts SQL sensibles
+## Scripts SQL sensibles
 cat sensitive_migration.sql | crypta store SQL_MIGRATION_V2
 
-# Configuración MongoDB
+## Configuración MongoDB
 cat << EOF | crypta store MONGO_CONFIG
 {
-  "hosts": ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
-  "replicaSet": "rs0",
-  "username": "admin",
-  "password": "$(openssl rand -base64 24)"
+#  "hosts": ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
+#  "replicaSet": "rs0",
+#  "username": "admin",
+#  "password": "$(openssl rand -base64 24)"
 }
 EOF
 ```
 
-### Integración con Password Managers
+#### Integración con Password Managers
 
 ```bash
-# Desde 1Password CLI
+## Desde 1Password CLI
 op item get "API Key" --field password | crypta store OP_API_KEY
 
-# Desde Bitwarden CLI
+## Desde Bitwarden CLI
 bw get password "Database Password" | crypta store BW_DB_PASS
 
-# Desde pass (Unix password manager)
+## Desde pass (Unix password manager)
 pass show services/api-key | crypta store PASS_API_KEY
 ```
 
-### Automatización y Scripts
+#### Automatización y Scripts
 
 ```bash
 #!/bin/bash
-# Script para rotar contraseñas
+## Script para rotar contraseñas
 rotate_password() {
-    local key_name=$1
-    local new_pass=$(openssl rand -base64 32)
+#    local key_name=$1
+#    local new_pass=$(openssl rand -base64 32)
 
-    # Almacenar nueva contraseña
-    echo "$new_pass" | crypta store "$key_name"
+#    # Almacenar nueva contraseña
+#    echo "$new_pass" | crypta store "$key_name"
 
-    # Sincronizar cambios
-    crypta sync "Rotated password for $key_name"
+#    # Sincronizar cambios
+#    crypta sync "Rotated password for $key_name"
 
-    echo "✅ Password rotated for $key_name"
+#    echo "✅ Password rotated for $key_name"
 }
 
-# Uso
+## Uso
 rotate_password "API_KEY"
 rotate_password "DB_PASSWORD"
 ```
 
-### Backup y Migración
+#### Backup y Migración
 
 ```bash
-# Exportar todos los secretos (para backup)
+## Exportar todos los secretos (para backup)
 for key in $(crypta list | grep -o '[A-Z_][A-Z0-9_]*'); do
-    echo "=== $key ===" >> backup.txt
-    RUST_LOG=off crypta lookup "$key" >> backup.txt
-    echo "" >> backup.txt
+#    echo "=== $key ===" >> backup.txt
+#    RUST_LOG=off crypta lookup "$key" >> backup.txt
+#    echo "" >> backup.txt
 done
 
-# Migrar desde otro gestor de secretos
+## Migrar desde otro gestor de secretos
 jq -r '.secrets[] | "\(.key)\n\(.value)"' old_secrets.json | \
 while read key && read value; do
-    echo "$value" | crypta store "$key"
+#    echo "$value" | crypta store "$key"
 done
 ```
 
-## 🏗️ Arquitectura
+### 🏗️ Arquitectura
 
 ```
 crypta/
 ├── src/
 │   ├── lib.rs          # API pública y type aliases
 │   ├── main.rs         # CLI con clap
+│   ├── templates.rs    # Renderizado de plantillas Jinja2
 │   ├── secrets.rs      # Operaciones con secretos encriptados
 │   └── git.rs          # Operaciones Git (sync, pull, push)
 ├── tests/
@@ -563,7 +745,7 @@ crypta/
 └── Cargo.toml
 ```
 
-## 📋 Comandos Disponibles
+### 📋 Comandos Disponibles
 
 | Comando                         | Alias | Descripción                                                               | Key                      | Entrada  | Salida            |
 | ------------------------------- | ----- | ------------------------------------------------------------------------- | ------------------------ | -------- | ----------------- |
@@ -574,10 +756,14 @@ crypta/
 | `lookup [KEY]`                  | `l`   | Muestra un secreto por stdout (ideal para scripts)                        | Parámetro o `$SECRET_ID` | -        | 📝 stdout         |
 | `list`                          | `ls`  | Lista todas las claves disponibles                                        | -                        | -        | 🔑 Lista          |
 | `delete [KEY]`                  | `rm`  | Elimina un secreto                                                        | Parámetro o `$SECRET_ID` | -        | 🗑️ Confirmación   |
+| `render [FILE]`                   | `r`   | Renderiza una plantilla Jinja2 con secretos del store              | -                        | 📝 stdin/archivo | 📝 stdout         |
 | `sync [MSG]`                    | `sy`  | Sincroniza cambios con Git                                                | -                        | -        | 🔄 Estado sync    |
 | `password [-l N] [--special]`   | `pwd` | Genera una contraseña aleatoria                                           | -                        | -        | 🔑 stdout         |
+| `import [FILE]`                 | `im`  | Importa secretos desde .env, JSON o YAML                                  | -                        | 📝 stdin/archivo | ✅ Confirmación |
+| `export`                        | `ex`  | Exporta secretos a .env, JSON o YAML                                      | -                        | -        | 📝 stdout/archivo |
+| `completion`                    | `com` | Genera script de autocompletado para el shell                             | -                        | -        | 📝 stdout         |
 
-### 🔑 Gestión de Claves
+#### 🔑 Gestión de Claves
 
 Todos los comandos que requieren una clave pueden obtenerla de dos formas:
 
@@ -585,25 +771,25 @@ Todos los comandos que requieren una clave pueden obtenerla de dos formas:
 2. **Variable de entorno**: `SECRET_ID=API_KEY crypta get`
 
 ```bash
-# Métodos equivalentes:
+## Métodos equivalentes:
 crypta get API_KEY
 SECRET_ID=API_KEY crypta get
 
-# Store desde stdin
+## Store desde stdin
 echo "secreto" | crypta store API_KEY
 SECRET_ID=API_KEY echo "secreto" | crypta store
 
-# Set con flags
+## Set con flags
 crypta set --key API_KEY --value "secreto"
 SECRET_ID=API_KEY crypta set --value "secreto"
 ```
 
-### 🚀 Comandos Cortos (Aliases)
+#### 🚀 Comandos Cortos (Aliases)
 
 Todos los comandos tienen versiones cortas para mayor rapidez:
 
 ```bash
-# Comandos largos
+## Comandos largos
 crypta init
 crypta store API_KEY < secret.txt
 crypta set API_KEY "value"
@@ -612,8 +798,9 @@ crypta lookup API_KEY
 crypta list
 crypta delete API_KEY
 crypta sync "mensaje"
+crypta render template.j2
 
-# Comandos cortos (equivalentes)
+## Comandos cortos (equivalentes)
 crypta i
 crypta s API_KEY < secret.txt
 crypta se API_KEY "value"
@@ -622,6 +809,7 @@ crypta l API_KEY
 crypta ls
 crypta rm API_KEY
 crypta sy "mensaje"
+crypta r template.j2
 crypta pwd -l 24 --special
 ```
 
@@ -635,7 +823,7 @@ crypta pwd -l 24 --special
 - `get`: Copia al portapapeles (uso interactivo)
 - `lookup`: Imprime por stdout (uso en scripts, pipes, variables)
 
-## �🛠️ Tecnologías
+### �🛠️ Tecnologías
 
 | Dependencia    | Propósito                                 |
 | -------------- | ----------------------------------------- |
@@ -645,43 +833,44 @@ crypta pwd -l 24 --special
 | **arboard**    | Portapapeles multiplataforma              |
 | **clap**       | CLI parsing con derive macros             |
 | **serde_yaml** | Manipulación de YAML                      |
+| **minijinja**  | Motor de plantillas Jinja2                |
 | **anyhow**     | Manejo de errores ergonómico              |
 | **tracing**    | Logging estructurado                      |
 
-## 🧪 Tests
+### 🧪 Tests
 
 ```bash
-# Ejecutar todos los tests
+## Ejecutar todos los tests
 cargo test
 
-# Tests con output detallado
+## Tests con output detallado
 cargo test -- --nocapture
 
-# Solo tests unitarios
+## Solo tests unitarios
 cargo test --lib
 
-# Solo tests de integración
+## Solo tests de integración
 cargo test --test '*'
 ```
 
-**Cobertura actual:** 21 tests (6 secrets + 5 git + 4 integración + 2 password + 4 unitarios git)
+**Cobertura actual:** 35 tests (14 secrets + 5 git + 4 integración + 2 password + 6 templates + 4 unitarios git)
 
-## 📊 Benchmarks
+### 📊 Benchmarks
 
 ```bash
-# Añadir secreto: ~50ms
-# Leer secreto: ~30ms
-# Sincronizar: ~200ms (depende de red)
+## Añadir secreto: ~50ms
+## Leer secreto: ~30ms
+## Sincronizar: ~200ms (depende de red)
 ```
 
-## 🔒 Seguridad
+### 🔒 Seguridad
 
 - ✅ Encriptación mediante **SOPS** (Age, AWS KMS, GCP KMS, Azure Key Vault o PGP)
 - ✅ Claves Age con curvas elípticas **Curve25519**
 - ✅ Los secretos **nunca se escriben en texto plano al disco** — la encriptación se hace por stdin pipe
 - ✅ Sin dependencias de encriptación en Rust — todo el peso recae en SOPS, auditado y probado
 
-## 🤝 Contribuir
+### 🤝 Contribuir
 
 Las contribuciones son bienvenidas! Por favor:
 
@@ -691,23 +880,23 @@ Las contribuciones son bienvenidas! Por favor:
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
-### Directrices
+#### Directrices
 
 - Todos los tests deben pasar: `cargo test`
 - Código formateado: `cargo fmt`
 - Sin warnings de clippy: `cargo clippy`
 - Añadir tests para nuevas funcionalidades
 
-## 📝 Roadmap
+### 📝 Roadmap
 
-### En desarrollo
+#### En desarrollo
 
 - [x] Comando `store` con entrada stdin para contenido complejo
 - [x] Comando `set` como alias tradicional para compatibilidad
 - [x] Soporte para contenido multilínea y binario
 - [x] Comando `init` para inicialización automática
 
-### Próximas características
+#### Próximas características
 
 - [x] Comando `import` para migrar desde otros gestores (.env, JSON, YAML)
 - [x] Comando `export` para backup en diferentes formatos
@@ -719,16 +908,16 @@ Las contribuciones son bienvenidas! Por favor:
 
 > **Nota:** El soporte para múltiples backends de encriptación (AWS KMS, GCP KMS, Azure Key Vault, PGP) ya está cubierto por SOPS. crypta delega toda la encriptación a `sops`, que soporta todos estos backends de forma nativa. Solo es necesario configurar `.sops.yaml` con la clave apropiada.
 
-## 📄 Licencia
+### 📄 Licencia
 
 Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
 
-## 🙏 Agradecimientos
+### 🙏 Agradecimientos
 
 - [SOPS](https://github.com/getsops/sops) - Secrets OPerationS para encriptación
 - [Age](https://github.com/FiloSottile/age) - Sistema de encriptación simple y seguro
 
-## 💬 Soporte
+### 💬 Soporte
 
 ¿Encontraste un bug? ¿Tienes una sugerencia?
 
