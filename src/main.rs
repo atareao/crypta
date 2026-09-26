@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
-use crypta::{git, secrets};
+use crypta::{git, secrets, templates};
 use std::io::{self, Read};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -107,6 +107,12 @@ enum Commands {
         #[arg(short, long, default_value_t = String::from("bash"))]
         shell: String,
     },
+    /// Renderiza una plantilla Jinja2 con valores del store de secretos
+    #[command(alias = "r")]
+    Render {
+        /// Archivo de plantilla (opcional, por defecto stdin)
+        file: Option<String>,
+    },
 }
 
 fn main() {
@@ -202,6 +208,11 @@ fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Res
                     .context(format!("No se pudo escribir el archivo: {}", path))?,
                 None => print!("{}", result),
             }
+            Ok(())
+        }
+        Commands::Render { file } => {
+            let result = templates::render_file(secrets_file, file.as_deref())?;
+            print!("{}", result);
             Ok(())
         }
         Commands::Completion { shell } => {
