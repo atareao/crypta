@@ -1,3 +1,4 @@
+use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
@@ -235,4 +236,81 @@ fn test_import_env_with_comments() {
 
     assert_eq!(pairs.len(), 1);
     assert_eq!(pairs.get("KEY"), Some(&"val".to_string()));
+}
+
+/// Test que verifica que encrypt_with_sops funciona con --filename-override
+///
+/// Requiere: sops y age-keygen instalados en el sistema.
+/// Sin --filename-override, sops 3.13+ falla porque /dev/stdin no matchea
+/// path_regex: .*\.yml$ en .sops.yaml.
+#[test]
+fn test_encrypt_with_filename_override() {
+    let temp_dir = TempDir::new().unwrap();
+    let secrets_dir = temp_dir.path().join(".secrets");
+    let secrets_file = secrets_dir.join("secrets.yml");
+    let age_key_dir = secrets_dir.join("sops/age");
+    let age_key_path = age_key_dir.join("key.txt");
+
+    // Crear directorios
+    std::fs::create_dir_all(&age_key_dir).expect("crear dir age");
+
+    // Generar clave Age
+    let output = Command::new("age-keygen")
+        .arg("-o")
+        .arg(&age_key_path)
+        .output()
+        .expect("age-keygen debe estar instalado");
+    assert!(output.status.success(), "age-keygen falló");
+
+    // Extraer clave pública del stderr de age-keygen
+    // age-keygen escribe "Public key:" (con P mayúscula) en stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let public_key = stderr
+        .lines()
+        .find(|l| l.to_lowercase().contains("public key:"))
+        .and_then(|l| {
+            l.split("Public key:")
+                .nth(1)
+                .or_else(|| l.split("# public key:").nth(1))
+        })
+        .map(|s| s.trim())
+        .expect("No se pudo extraer la clave pública");
+
+    // Crear .sops.yaml con path_regex .*\.yml$
+    let sops_config = format!(
+        r#"creation_rules:
+  - path_regex: .*\.yml$
+    age: "{}"
+"#,
+        public_key
+    );
+    std::fs::write(secrets_dir.join(".sops.yaml"), &sops_config).expect("escribir .sops.yaml");
+
+    // Configurar variable de entorno para la clave Age
+    unsafe {
+        std::env::set_var("SOPS_AGE_KEY_FILE", &age_key_path);
+    }
+
+    // Ejecutar add() — esto llama a encrypt_with_sops internamente
+    crypta::secrets::add(
+        secrets_dir.to_str().unwrap(),
+        secrets_file.to_str().unwrap(),
+        "test_key",
+        "test_value",
+    )
+    .expect("add() debe funcionar con --filename-override");
+
+    // Verificar que el archivo se creó y está encriptado
+    assert!(secrets_file.exists(), "El archivo debe existir");
+    let content = std::fs::read_to_string(&secrets_file).expect("leer secrets.yml");
+    assert!(
+        content.contains("ENC[AES256_GCM,"),
+        "El contenido debe estar encriptado: {}",
+        content
+    );
+
+    // Limpiar variable de entorno
+    unsafe {
+        std::env::remove_var("SOPS_AGE_KEY_FILE");
+    }
 }

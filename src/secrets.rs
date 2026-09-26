@@ -292,8 +292,24 @@ fn encrypt_with_sops(yaml_content: &str, secrets_file: &str) -> Result<Vec<u8>> 
     // Pasar el contenido por stdin a sops -e para evitar escribir secretos
     // en texto plano al disco. sops lee de stdin cuando no se le pasa archivo.
     // Usamos --input-type y --output-type para asegurar formato correcto.
+    // --filename-override es necesario en sops 3.13+ para que path_regex en
+    // .sops.yaml matchee correctamente (sin esto, el filename virtual es
+    // /dev/stdin y no matchea .*\.yml$).
+    let filename = secrets_path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("secrets.yml");
     let mut child = Command::new("sops")
-        .args(["-e", "--input-type", "yaml", "--output-type", "yaml"])
+        .args([
+            "-e",
+            "--input-type",
+            "yaml",
+            "--output-type",
+            "yaml",
+            "--filename-override",
+            filename,
+            "/dev/stdin",
+        ])
         .current_dir(work_dir)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
