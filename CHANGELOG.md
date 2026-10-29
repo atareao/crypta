@@ -1,30 +1,65 @@
 # Changelog
+## [0.3.1] - 2026-10-29
+
+### Bug Fixes
+
+- Hotfix: add --filename-override /dev/stdin to sops -e for sops 3.13+ compatibility
+- Hotfix: add --filename-override /dev/stdin to sops -e
+
+### Features
+
+- *(init)* Add --remote flag to configure git remote automatically
+
+
+## [0.3.0] - 2026-09-26
+
+### Features
+
+- Feat: add template render command with minijinja
+
+### Miscellaneous Tasks
+
+- Chore(release): v0.3.0
+
+
+- V0.3.0
 ## [0.2.3] - 2026-09-25
 
 ### Bug Fixes
 
 - Fix(completion): usar clap_complete::generate para todos los shells
-- Fix(completion): usar clap_complete::generate para todos los shells
-- Hotfix(completion): v0.2.2
 
 ### Dependencies
 
-- *(deps)* Bump rand from 0.10.0 to 0.10.1
 - *(deps)* Deps: actualizar dependencias
 - *(deps)* Deps: actualizar dependencias
+
+### Miscellaneous Tasks
+
+- Chore(release): v0.2.3
+
+
+- V0.2.3
+## [0.2.2] - 2026-08-29
+
+### Bug Fixes
+
+- Fix(completion): usar clap_complete::generate para todos los shells
+- Hotfix(completion): v0.2.2
 
 ### Documentation
 
 - Docs(changelog): v0.2.2
+## [0.2.1] - 2026-08-29
+
+### Dependencies
+
+- *(deps)* Bump rand from 0.10.0 to 0.10.1
 
 ### Miscellaneous Tasks
 
 - Update Cargo.lock after v0.2.0 dependencies
 - Chore(release): v0.2.1
-
-### Other
-
-- V0.2.3
 ## [0.2.0] - 2026-08-29
 
 ### Bug Fixes
