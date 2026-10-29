@@ -61,7 +61,11 @@ enum Commands {
     },
     /// Inicializa el directorio y archivo de secretos
     #[command(alias = "i")]
-    Init,
+    Init {
+        /// URL del repositorio git remoto (opcional)
+        #[arg(short = 'r', long)]
+        remote: Option<String>,
+    },
     /// Sincroniza cambios con el remoto
     #[command(alias = "sy")]
     Sync { message: Option<String> },
@@ -181,7 +185,7 @@ fn run_command(command: &Commands, secrets_dir: &str, secrets_file: &str) -> Res
             let key = resolve_key(key.as_deref())?;
             secrets::remove(secrets_file, &key)
         }
-        Commands::Init => secrets::init(secrets_dir, secrets_file),
+        Commands::Init { remote } => secrets::init(secrets_dir, secrets_file, remote.as_deref()),
         Commands::Sync { message } => git::sync(secrets_dir, message.as_deref()),
         Commands::Password { length, special } => secrets::generate_password(*length, *special),
         Commands::Import {

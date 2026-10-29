@@ -1,10 +1,11 @@
+use crate::git;
 use anyhow::{Context, Result};
 use arboard::Clipboard;
 use rand::prelude::*;
 use serde_yaml::Value;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
@@ -383,7 +384,7 @@ fn extract_public_key_from_output(output: &str) -> Result<String> {
     anyhow::bail!("No se pudo extraer la clave pública de la salida de age-keygen")
 }
 
-pub fn init(secrets_dir: &str, secrets_file: &str) -> Result<()> {
+pub fn init(secrets_dir: &str, secrets_file: &str, remote_url: Option<&str>) -> Result<()> {
     info!("Inicializando directorio de secretos");
     debug!("Directorio: {}, Archivo: {}", secrets_dir, secrets_file);
 
@@ -479,6 +480,33 @@ creation_rules:
             "   Fish: echo 'set -gx SOPS_AGE_KEY_FILE {}' >> ~/.config/fish/config.fish",
             age_key_path
         );
+    }
+
+    // Configuración de repositorio git remoto
+    if let Some(url) = remote_url {
+        // Modo no interactivo: --remote flag
+        info!("Configurando repositorio remoto: {}", url);
+        println!("🔗 Configurando repositorio remoto...");
+        git::init_repo_with_remote(secrets_dir, url)?;
+    } else {
+        // Modo interactivo: preguntar al usuario
+        print!("¿Quieres configurar un repositorio remoto para sincronizar? (s/N): ");
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_lowercase();
+
+        if input == "s" || input == "si" || input == "y" || input == "yes" {
+            print!("URL del repositorio: ");
+            std::io::stdout().flush()?;
+            let mut url = String::new();
+            io::stdin().read_line(&mut url)?;
+            let url = url.trim().to_string();
+
+            if !url.is_empty() {
+                git::init_repo_with_remote(secrets_dir, &url)?;
+            }
+        }
     }
 
     println!("✅ Inicialización completada exitosamente");

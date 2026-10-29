@@ -1,0 +1,44 @@
+# Spec Delta
+
+## Purpose
+
+Añadir configuración de repositorio git remoto al final del flujo de `crypta init`, de forma interactiva o mediante flag `--remote`.
+
+## ADDED Requirements
+
+### Requirement: Init configura repositorio git remoto
+
+La función `init` DEBE soportar la configuración opcional de un repositorio git remoto en `~/.secrets/`.
+
+#### Scenario: Init con --remote flag configura git automáticamente
+
+- **GIVEN** una función `init(secrets_dir, secrets_file, remote_url)` 
+- **WHEN** se invoca con `remote_url = Some("git@github.com:user/secrets.git")`
+- **THEN** DEBE inicializar un repositorio git en `secrets_dir`
+- **AND** DEBE añadir todos los archivos (`secrets_file`, `.sops.yaml`, `sops/age/key.txt`) al índice
+- **AND** DEBE crear un commit inicial con mensaje "Initial secrets"
+- **AND** DEBE configurar `remote origin` con la URL proporcionada
+- **AND** DEBE hacer push a `origin main`
+- **AND** DEBE imprimir "✅ Repositorio remoto configurado."
+
+#### Scenario: Init sin --remote pregunta interactivamente
+
+- **GIVEN** una función `init(secrets_dir, secrets_file, None)`
+- **WHEN** se ejecuta y completa la generación de clave y `.sops.yaml`
+- **THEN** DEBE preguntar al usuario: "¿Quieres configurar un repositorio remoto para sincronizar? (s/N)"
+- **AND** si el usuario responde "s" o "S", DEBE solicitar la URL del repositorio
+- **AND** DEBE ejecutar los mismos pasos que con `--remote` (init, add, commit, remote add, push)
+
+#### Scenario: Init sin remoto mantiene comportamiento actual
+
+- **GIVEN** una función `init(secrets_dir, secrets_file, None)`
+- **WHEN** el usuario responde "n" (o Enter) a la pregunta del remoto
+- **THEN** DEBE finalizar sin tocar git
+- **AND** DEBE imprimir el mensaje de finalización actual
+
+#### Scenario: Init --remote con push fallido no revierte repo local
+
+- **GIVEN** un directorio `secrets_dir` sin conexión a internet
+- **WHEN** `init` hace `git push` y falla
+- **THEN** DEBE mostrar un error con el mensaje "⚠️ Push falló. El repo local está configurado."
+- **AND** NO DEBE revertir el repo local ni eliminar el remote

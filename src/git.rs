@@ -251,6 +251,66 @@ fn push(repo: &Repository) -> Result<()> {
     Ok(())
 }
 
+/// Inicializa un repositorio git, añade todos los archivos, crea commit inicial,
+/// configura remote origin y hace push (opcionalmente).
+pub fn init_repo_with_remote(secrets_dir: &str, remote_url: &str) -> Result<()> {
+    info!("Inicializando repositorio git en {}", secrets_dir);
+    debug!("Remote URL: {}", remote_url);
+
+    // 1. Init repo
+    let repo =
+        Repository::init(secrets_dir).context("No se pudo inicializar el repositorio git")?;
+
+    // 2. Add all files
+    let mut index = repo.index()?;
+    index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
+    index.write()?;
+
+    // 3. Create initial commit
+    let oid = index.write_tree()?;
+    let tree = repo.find_tree(oid)?;
+    let sig = Signature::now("crypta", "crypta@local")?;
+
+    // If repo is empty (no commits yet), create first commit without parent
+    if repo.head().is_err() {
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial secrets", &tree, &[])?;
+        debug!("Commit inicial creado");
+    } else {
+        let parent = repo.head()?.peel_to_commit()?;
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "Initial secrets",
+            &tree,
+            &[&parent],
+        )?;
+        debug!("Commit creado sobre head existente");
+    }
+
+    println!("✅ Commit inicial creado");
+
+    // 4. Configure remote origin
+    repo.remote("origin", remote_url)?;
+    debug!("Remote 'origin' configurado: {}", remote_url);
+    println!("🔗 Remote origin configurado: {}", remote_url);
+
+    // 5. Push (with fallback)
+    match push(&repo) {
+        Ok(()) => {
+            println!("🚀 Push a origin main completado");
+        }
+        Err(e) => {
+            // Push failure doesn't undo the repo init — user can push later
+            eprintln!("⚠️  No se pudo hacer push: {}", e);
+            println!("💡 El repositorio local está configurado. Puedes hacer push manualmente:");
+            println!("   cd {} && git push origin main", secrets_dir);
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use git2::{Repository, Signature};

@@ -314,3 +314,68 @@ fn test_encrypt_with_filename_override() {
         std::env::remove_var("SOPS_AGE_KEY_FILE");
     }
 }
+
+/// Test que verifica que init() acepta remote_url y configura git automáticamente.
+///
+/// DEBE FALLAR (RED): init() aún no acepta el tercer parámetro remote_url.
+#[test]
+fn test_init_with_remote_url() {
+    let temp_dir = TempDir::new().unwrap();
+    let secrets_dir = temp_dir.path().join(".secrets");
+    let secrets_file = secrets_dir.join("secrets.yml");
+    let age_key_dir = secrets_dir.join("sops/age");
+    let age_key_path = age_key_dir.join("key.txt");
+
+    // Crear directorio para la clave Age
+    std::fs::create_dir_all(&age_key_dir).expect("crear dir age");
+
+    // Generar clave Age
+    let output = Command::new("age-keygen")
+        .arg("-o")
+        .arg(&age_key_path)
+        .output()
+        .expect("age-keygen debe estar instalado");
+    assert!(output.status.success(), "age-keygen falló");
+
+    // Configurar variable de entorno para la clave Age
+    unsafe {
+        std::env::set_var("SOPS_AGE_KEY_FILE", &age_key_path);
+    }
+
+    // Llamar a init con remote_url — DEBE FALLAR AL COMPILAR (RED)
+    // porque init() actualmente solo acepta 2 parámetros.
+    let result = crypta::secrets::init(
+        secrets_dir.to_str().unwrap(),
+        secrets_file.to_str().unwrap(),
+        Some("git@github.com:test/secrets.git"),
+    );
+
+    // Limpiar variable de entorno
+    unsafe {
+        std::env::remove_var("SOPS_AGE_KEY_FILE");
+    }
+
+    assert!(result.is_ok(), "init() debe retornar Ok");
+
+    // Verificar que git repo fue inicializado
+    let git_dir = secrets_dir.join(".git");
+    assert!(git_dir.exists(), "Git repo debe estar inicializado");
+
+    // Verificar que remote origin está configurado
+    let repo = git2::Repository::open(&secrets_dir).expect("Abrir repositorio");
+    let remote = repo
+        .find_remote("origin")
+        .expect("Remote origin configurado");
+    let url = remote.url().expect("URL del remote");
+    assert_eq!(
+        url, "git@github.com:test/secrets.git",
+        "URL del remote debe coincidir"
+    );
+
+    // Verificar que hay al menos un commit
+    let head = repo.head().expect("HEAD debe existir");
+    assert!(
+        head.peel_to_commit().is_ok(),
+        "Debe haber al menos un commit inicial"
+    );
+}
