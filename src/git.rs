@@ -261,6 +261,11 @@ pub fn init_repo_with_remote(secrets_dir: &str, remote_url: &str) -> Result<()> 
     let repo =
         Repository::init(secrets_dir).context("No se pudo inicializar el repositorio git")?;
 
+    // Forzar HEAD a refs/heads/main (libgit2 por defecto crea "master")
+    repo.set_head("refs/heads/main")
+        .context("No se pudo fijar la rama inicial a main")?;
+    debug!("Rama inicial fijada a main");
+
     // 2. Add all files
     let mut index = repo.index()?;
     index.add_all(["*"].iter(), IndexAddOption::DEFAULT, None)?;
