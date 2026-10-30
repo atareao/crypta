@@ -1,4 +1,10 @@
 # Changelog
+## [0.3.2] - 2026-10-30
+
+### Bug Fixes
+
+- Fix(init): create initial branch as main instead of master
+
 ## [0.3.1] - 2026-10-29
 
 ### Bug Fixes
@@ -10,7 +16,13 @@
 
 - *(init)* Add --remote flag to configure git remote automatically
 
+### Miscellaneous Tasks
 
+- Release v0.3.1
+
+### Other
+
+- 0.3.1
 ## [0.3.0] - 2026-09-26
 
 ### Features
@@ -21,6 +33,7 @@
 
 - Chore(release): v0.3.0
 
+### Other
 
 - V0.3.0
 ## [0.2.3] - 2026-09-25
@@ -38,6 +51,7 @@
 
 - Chore(release): v0.2.3
 
+### Other
 
 - V0.2.3
 ## [0.2.2] - 2026-08-29
