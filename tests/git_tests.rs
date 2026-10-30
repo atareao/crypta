@@ -73,3 +73,32 @@ fn test_git_commit_creation() {
 
     assert!(repo.find_commit(commit_id).is_ok());
 }
+
+#[test]
+fn test_init_repo_with_remote_creates_main_branch() {
+    use std::fs;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    // Crear un archivo para que el commit inicial tenga contenido
+    let file_path = temp_dir.path().join("secrets.yml");
+    fs::write(&file_path, "hello: world\n").unwrap();
+
+    let dir_str = temp_dir.path().to_str().unwrap();
+
+    // Init con remote — el push fallará (no hay remote real) pero la función
+    // devuelve Ok de todas formas
+    crypta::git::init_repo_with_remote(dir_str, "git@github.com:test/secrets.git").unwrap();
+
+    // Abrir el repo y verificar la rama activa
+    let repo = Repository::open(temp_dir.path()).unwrap();
+
+    // La rama activa debe ser "main", no "master"
+    assert_eq!(repo.head().unwrap().shorthand().unwrap(), "main");
+
+    // La rama local "main" debe existir
+    assert!(repo.find_branch("main", git2::BranchType::Local).is_ok());
+
+    // La rama local "master" NO debe existir
+    assert!(repo.find_branch("master", git2::BranchType::Local).is_err());
+}
