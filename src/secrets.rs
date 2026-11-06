@@ -162,8 +162,19 @@ pub fn show(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
         write_access_log(secrets_file, "lookup", key)?;
     }
 
-    // Imprimir el valor por stdout
-    println!("{}", val);
+    // Imprimir el valor por stdout, SIN newline final. El driver `shell` de
+    // Podman captura el stdout de `crypta lookup` tal cual como valor del
+    // secreto; un `\n` final lo corrompería (p. ej. rompe una HTTP Basic Auth
+    // que compare la password exacta).
+    write_value(&mut io::stdout(), val)
+}
+
+/// Escribe `val` en `writer` sin añadir un `\n` final.
+fn write_value<W: Write>(writer: &mut W, val: &str) -> Result<()> {
+    writer
+        .write_all(val.as_bytes())
+        .context("No se pudo escribir el valor en stdout")?;
+    writer.flush().context("No se pudo vaciar stdout")?;
     Ok(())
 }
 
@@ -709,4 +720,26 @@ fn write_access_log(secrets_file: &str, action: &str, key: &str) -> Result<()> {
 
     debug!("Entrada de auditoría escrita: {}", entry.trim());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regresión: `crypta lookup` DEBE emitir el valor exacto por stdout,
+    /// sin newline final. El driver `shell` de Podman captura el stdout tal
+    /// cual como valor del secreto, así que un `\n` sobrante lo corrompe.
+    #[test]
+    fn write_value_has_no_trailing_newline() {
+        let mut buf: Vec<u8> = Vec::new();
+        write_value(&mut buf, "AuthPass123").unwrap();
+        assert_eq!(buf, b"AuthPass123");
+    }
+
+    #[test]
+    fn write_value_preserves_inner_and_leading_whitespace() {
+        let mut buf: Vec<u8> = Vec::new();
+        write_value(&mut buf, "  a b\tc ").unwrap();
+        assert_eq!(buf, b"  a b\tc ");
+    }
 }
