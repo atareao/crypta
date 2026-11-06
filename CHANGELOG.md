@@ -1,4 +1,9 @@
 # Changelog
+## [0.3.3] - 2026-11-06
+
+### Bug Fixes
+
+- Fix(lookup): no emitir newline final. El driver `shell` de Podman captura el stdout de `crypta lookup` tal cual como valor del secreto, así que un `\n` final lo corrompía (rompía, p. ej., una HTTP Basic Auth que compara la password exacta).
 ## [0.3.2] - 2026-10-30
 
 ### Bug Fixes
