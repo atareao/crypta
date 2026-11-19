@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use minijinja::{Environment, UndefinedBehavior, Value};
+use minijinja::{Environment, ErrorKind, UndefinedBehavior, Value};
 use std::collections::BTreeMap;
 use std::io::Read;
 
@@ -18,15 +18,29 @@ pub fn render_template(
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     let ctx = Value::from_serialize(secrets);
     env.render_str(template_content, ctx).map_err(|e| {
-        let msg = format!("{:#}", e);
-        if msg.contains("is not defined") {
-            if let Some(name) = msg.split('\'').nth(1) {
-                anyhow::anyhow!("La variable '{}' no existe en el store de secretos", name)
-            } else {
-                anyhow::anyhow!("{}", msg)
+        // No usar `{:#}`: el formato alternativo añade un bloque
+        // "Referenced variables" con los valores en claro de los secretos.
+        // Se sanea el error usando solo `kind()` y `detail()`.
+        match e.kind() {
+            ErrorKind::UndefinedError => {
+                let name = e
+                    .template_source()
+                    .zip(e.range())
+                    .map(|(source, range)| source[range].trim().to_string())
+                    .filter(|name| !name.is_empty());
+                match name {
+                    Some(name) => {
+                        anyhow::anyhow!("La variable '{}' no existe en el store de secretos", name)
+                    }
+                    None => anyhow::anyhow!("Variable no definida en la plantilla"),
+                }
             }
-        } else {
-            anyhow::anyhow!("{}", msg)
+            kind => match e.detail() {
+                Some(detail) => {
+                    anyhow::anyhow!("Error al renderizar la plantilla: {}: {}", kind, detail)
+                }
+                None => anyhow::anyhow!("Error al renderizar la plantilla: {}", kind),
+            },
         }
     })
 }
