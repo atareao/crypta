@@ -2,23 +2,11 @@
 
 ## Estado
 
-Feature `cli-safety-flags` mergeada en `develop` (PR #13). Change archivado y plan archivado. Skill movida a `skills/crypta/SKILL.md` con symlink en `.opencode/skills/crypta/SKILL.md` y documentada en el README.
-
-- **Rama:** `develop` en `7104e2a`
-- **Issue:** #12 — https://github.com/atareao/crypta/issues/12
-- **Plan:** `plans/PLAN-001-ARCHIVED.md`
-- **Change:** `openspec/changes/archive/2026-11-20-cli-safety-flags/`
-- **Skill:** `skills/crypta/SKILL.md` (symlink: `.opencode/skills/crypta/SKILL.md`)
-- **`main`:** `8d50c8e` (v0.3.3), sin la feature ni la skill
+Release v0.3.4 publicada y mergeada en `main` (commit `8befffe`, tag `v0.3.4`); `develop` en `786532a` con el back-merge. Feature `cli-safety-flags` (PR #13) y skill `crypta` ya están en `main`. Binario reinstalado localmente en v0.3.4. GitHub release creada: https://github.com/atareao/crypta/releases/tag/v0.3.4
 
 ## Tarea pendiente
 
-**Publicar release v0.3.4** para llevar todo a `main` (feature + skill). Se hará esta tarde.
-
-```sh
-just release-start v0.3.4
-just release-finish v0.3.4
-```
+Ninguna. La release v0.3.4 está publicada.
 
 ## Follow-ups opcionales (reviewer)
 
