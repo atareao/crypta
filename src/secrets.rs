@@ -70,10 +70,11 @@ pub fn add(secrets_dir: &str, secrets_file: &str, key: &str, value: &str) -> Res
     Ok(())
 }
 
-pub fn get(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
-    info!("Obteniendo secreto '{}'", key);
-    debug!("Archivo: {}", secrets_file);
-
+/// Desencripta el archivo de secretos y devuelve el valor de `key`.
+///
+/// Punto único de lectura: `get`, `show` y `mask` comparten aquí la
+/// verificación de sops, el desencriptado y la búsqueda de la clave.
+fn read_secret_value(secrets_file: &str, key: &str) -> Result<String> {
     if !Path::new(secrets_file).exists() {
         anyhow::bail!(
             "El archivo de secretos no existe: {}\n\nPrimero añade un secreto con: crypta add CLAVE valor",
@@ -101,10 +102,20 @@ pub fn get(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
     let yaml: Value =
         serde_yaml::from_str(&decrypted_content).context("No se pudo parsear el contenido YAML")?;
 
-    let val = yaml
+    let value = yaml
         .get(key)
-        .and_then(|v| v.as_str())
-        .context(format!("La clave '{}' no existe", key))?;
+        .with_context(|| format!("La clave '{}' no existe", key))?;
+    value
+        .as_str()
+        .map(str::to_string)
+        .with_context(|| format!("El valor de la clave '{}' no es una cadena de texto", key))
+}
+
+pub fn get(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
+    info!("Obteniendo secreto '{}'", key);
+    debug!("Archivo: {}", secrets_file);
+
+    let val = read_secret_value(secrets_file, key)?;
 
     if log_access {
         write_access_log(secrets_file, "get", key)?;
@@ -126,37 +137,7 @@ pub fn show(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
     info!("Mostrando secreto '{}'", key);
     debug!("Archivo: {}", secrets_file);
 
-    if !Path::new(secrets_file).exists() {
-        anyhow::bail!(
-            "El archivo de secretos no existe: {}\n\nPrimero añade un secreto con: crypta add CLAVE valor",
-            secrets_file
-        );
-    }
-
-    verify_sops_installed()?;
-
-    debug!("Desencriptando con sops...");
-    let output = Command::new("sops")
-        .arg("-d")
-        .arg(secrets_file)
-        .output()
-        .context("No se pudo ejecutar sops")?;
-
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Error al desencriptar: {}", error);
-    }
-
-    let decrypted_content = String::from_utf8(output.stdout)
-        .context("El contenido desencriptado no es UTF-8 válido")?;
-
-    let yaml: Value =
-        serde_yaml::from_str(&decrypted_content).context("No se pudo parsear el contenido YAML")?;
-
-    let val = yaml
-        .get(key)
-        .and_then(|v| v.as_str())
-        .context(format!("La clave '{}' no existe", key))?;
+    let val = read_secret_value(secrets_file, key)?;
 
     if log_access {
         write_access_log(secrets_file, "lookup", key)?;
@@ -166,7 +147,48 @@ pub fn show(secrets_file: &str, key: &str, log_access: bool) -> Result<()> {
     // Podman captura el stdout de `crypta lookup` tal cual como valor del
     // secreto; un `\n` final lo corrompería (p. ej. rompe una HTTP Basic Auth
     // que compare la password exacta).
-    write_value(&mut io::stdout(), val)
+    write_value(&mut io::stdout(), &val)
+}
+
+/// Metadatos de un secreto que no exponen su valor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretMetadata {
+    /// Clave consultada.
+    pub key: String,
+    /// Longitud exacta del valor, en caracteres.
+    pub length: usize,
+}
+
+/// Devuelve metadatos de un secreto sin exponer su valor.
+///
+/// Falla si el archivo no existe, si sops falla o si la clave no está.
+pub fn mask_metadata(secrets_file: &str, key: &str) -> Result<SecretMetadata> {
+    let value = read_secret_value(secrets_file, key)?;
+    Ok(SecretMetadata {
+        key: key.to_string(),
+        length: value.chars().count(),
+    })
+}
+
+/// Muestra por stdout la existencia y longitud de un secreto, sin su valor.
+///
+/// `action` es la acción registrada en el log de auditoría (`get` o `lookup`).
+pub fn mask(secrets_file: &str, key: &str, log_access: bool, action: &str) -> Result<()> {
+    let metadata = mask_metadata(secrets_file, key)?;
+
+    if log_access {
+        write_access_log(secrets_file, action, key)?;
+    }
+
+    let mut stdout = io::stdout();
+    writeln!(
+        stdout,
+        "🔒 Secreto '{}' existe ({} caracteres).",
+        metadata.key, metadata.length
+    )
+    .context("No se pudo escribir en stdout")?;
+    stdout.flush().context("No se pudo vaciar stdout")?;
+    Ok(())
 }
 
 /// Escribe `val` en `writer` sin añadir un `\n` final.
