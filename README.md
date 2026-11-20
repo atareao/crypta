@@ -928,3 +928,22 @@ Este proyecto está licenciado bajo la Licencia MIT - ver el archivo [LICENSE](L
 ---
 
 Hecho con ❤️ y 🦀 por la comunidad Rust
+
+## Uso por agentes (skill)
+
+Crypta incluye una skill que enseña a un agente a usar el CLI sin exponer secretos en stdout, logs ni contexto. La skill describe el flujo seguro: escribir a fichero con `render --out` y comprobar existencia con `lookup --mask` o `get --mask` sin ver el valor.
+
+- **Fuente de verdad:** [`skills/crypta/SKILL.md`](skills/crypta/SKILL.md)
+- **Symlink para OpenCode:** [`.opencode/skills/crypta/SKILL.md`](.opencode/skills/crypta/SKILL.md)
+
+### Instalación
+
+```sh
+# Binario
+cargo install --path .
+
+# Skill global para OpenCode
+mkdir -p ~/.config/opencode/skills/crypta && cp skills/crypta/SKILL.md ~/.config/opencode/skills/crypta/SKILL.md
+```
+
+**Regla clave:** usa `render --out` para escribir a fichero y `lookup --mask` / `get --mask` para verificar existencia sin ver el valor. Más detalles en [`docs/cli-safety-flags.md`](docs/cli-safety-flags.md).
