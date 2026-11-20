@@ -2,21 +2,25 @@
 
 ## Estado
 
-Feature `cli-safety-flags` implementada y auditada. Pendiente commit y PR.
+Feature `cli-safety-flags` implementada y auditada. Commit y PR abiertos; pendiente merge y cierre.
 
 - **Rama:** `feature/cli-safety-flags`
 - **Issue:** #12 — https://github.com/atareao/crypta/issues/12
+- **Commit:** `cb93d8e ✨ feat(cli): flags de seguridad --out y --mask para uso por agentes`
+- **PR:** https://github.com/atareao/crypta/pull/13 (base `develop`, asignado a atareao)
 - **Plan:** `plans/PLAN-001.md`
 - **Change:** `openspec/changes/cli-safety-flags/`
 
 ## Qué falta
 
-1. Commit de los cambios en `src/`, `tests/`, `docs/`, skill y bookkeeping con gitmoji.
-2. PR de `feature/cli-safety-flags` a `develop`.
-3. `openspec archive cli-safety-flags`.
-4. Renombrar `plans/PLAN-001.md` a `plans/PLAN-001-ARCHIVED.md`.
+Pendiente tras el merge del PR:
+
+1. `openspec archive cli-safety-flags`.
+2. Renombrar `plans/PLAN-001.md` a `plans/PLAN-001-ARCHIVED.md`.
 
 ## Comandos de verificación
+
+`just check` en verde, 70 tests.
 
 ```sh
 cargo fmt --check
