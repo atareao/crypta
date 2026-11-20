@@ -1,4 +1,16 @@
 # Changelog
+## [0.3.4] - 2026-11-20
+
+### Features
+
+- Feat(cli): flags de seguridad `--out` y `--mask` para uso por agentes
+- Render `--out` escribe a fichero con permisos `0600`, rechaza symlinks, hardlinks al store y ficheros no regulares
+- `lookup --mask` / `get --mask` muestran existencia y longitud sin exponer el valor
+
+### Documentation
+
+- Docs(skill): mover skill a `skills/crypta/SKILL.md` y documentar uso por agentes
+
 ## [0.3.3] - 2026-11-06
 
 ### Bug Fixes
