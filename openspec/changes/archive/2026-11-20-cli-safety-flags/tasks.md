@@ -29,7 +29,7 @@
 
 ## Fase 4 — Cierre
 
-- [ ] 4.1 PR a `develop`.
-- [ ] 4.2 `openspec archive cli-safety-flags`.
-- [ ] 4.3 Archivar `plans/PLAN-001.md`.
-- [ ] 4.4 Actualizar `HANDOFF.md`.
+- [x] 4.1 PR a `develop`.
+- [x] 4.2 `openspec archive cli-safety-flags`.
+- [x] 4.3 Archivar `plans/PLAN-001.md`.
+- [x] 4.4 Actualizar `HANDOFF.md`.

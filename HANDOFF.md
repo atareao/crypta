@@ -2,19 +2,24 @@
 
 ## Estado
 
-Feature `cli-safety-flags` implementada y auditada. Pendiente commit y PR.
+Feature `cli-safety-flags` mergeada en `develop` (PR #13). Change archivado y plan archivado.
 
-- **Rama:** `feature/cli-safety-flags`
+- **Rama:** `develop`
 - **Issue:** #12 — https://github.com/atareao/crypta/issues/12
-- **Plan:** `plans/PLAN-001.md`
-- **Change:** `openspec/changes/cli-safety-flags/`
+- **Plan:** `plans/PLAN-001-ARCHIVED.md`
+- **Change:** `openspec/changes/archive/2026-11-20-cli-safety-flags/`
 
-## Qué falta
+## Tarea pendiente
 
-1. Commit de los cambios en `src/`, `tests/`, `docs/`, skill y bookkeeping con gitmoji.
-2. PR de `feature/cli-safety-flags` a `develop`.
-3. `openspec archive cli-safety-flags`.
-4. Renombrar `plans/PLAN-001.md` a `plans/PLAN-001-ARCHIVED.md`.
+Ninguna. Próximo trabajo a definir.
+
+## Follow-ups opcionales (reviewer)
+
+- `access.log` con permisos `0600`.
+- Revisar el `enum AccessAction`.
+- Mitigar TOCTOU en macOS/BSD.
+- Escritura atómica en `render --out`.
+- Lints preexistentes en tests.
 
 ## Comandos de verificación
 
